@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Boxes, MapPin } from "lucide-react";
+import { Boxes, MapPin, QrCode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,16 @@ export default async function ZoneWorklistPage({ params, searchParams }: PagePro
         title={zone.name}
         description={`${zone.site!.name} · ${elements.length} elemento(s) · ${pending} vencido(s) o próximo(s) a vencer`}
         back={{ href: "/inspections", label: "Mis inspecciones" }}
+        actions={
+          zone.id && (
+            <a
+              href={`/api/qr/labels?zone=${zone.id}`}
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted"
+            >
+              <QrCode className="h-4 w-4" aria-hidden /> Etiquetas QR de la zona
+            </a>
+          )
+        }
       />
       {zone.description && <p className="-mt-3 mb-4 text-sm text-subtle">{zone.description}</p>}
 

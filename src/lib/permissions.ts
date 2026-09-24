@@ -109,6 +109,7 @@ export const SYSTEM_ROLES = {
       "evidences.upload",
       "dashboard.view",
       "reports.view",
+      "reports.export",
     ],
   },
   ACTION_OWNER: {

@@ -1,4 +1,4 @@
-import { Boxes, Plus } from "lucide-react";
+import { Boxes, FileUp, Plus, QrCode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -44,9 +44,22 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         description="Equipos y elementos de emergencia, su ubicación y programación de inspección."
         actions={
           canManage && (
-            <ButtonLink href="/inventory/new">
-              <Plus className="h-4 w-4" aria-hidden /> Nuevo elemento
-            </ButtonLink>
+            <>
+              <a
+                href={`/api/qr/labels?${new URLSearchParams(
+                  Object.entries({ site: query.site, type: query.type, process: query.process }).filter(([, v]) => v) as [string, string][],
+                )}`}
+                className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted"
+              >
+                <QrCode className="h-4 w-4" aria-hidden /> Etiquetas QR
+              </a>
+              <ButtonLink href="/admin/import" variant="outline">
+                <FileUp className="h-4 w-4" aria-hidden /> Carga masiva
+              </ButtonLink>
+              <ButtonLink href="/inventory/new">
+                <Plus className="h-4 w-4" aria-hidden /> Nuevo elemento
+              </ButtonLink>
+            </>
           )
         }
       />

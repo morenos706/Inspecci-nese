@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fase 5 (Dashboard gerencial). Guía de implementación: [`DESPLIEGUE.md`](DESPLIEGUE.md).
+> Última actualización: Fases 6 y 8 (QR, reportes y carga masiva). Guía de implementación: [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 ---
 
@@ -265,9 +265,9 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | 3 Inspecciones | Mis inspecciones por zona, formulario dinámico móvil, autoguardado, hallazgos en línea, fotos (S3), finalización, resultado y reprogramación | ✅ |
 | 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre, hallazgos automáticos por vencimiento | ✅ |
 | 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | ✅ |
-| 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | ⏭ |
+| 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | ✅ |
 | 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | |
-| 8 Reportes | Reportes filtrables, exportación CSV/Excel y PDF | |
+| 8 Reportes | Reportes filtrables, exportación Excel y PDF, informe por inspección, carga masiva de inventario | ✅ |
 | 9 Endurecimiento | Visor de auditoría, E2E, rate limit distribuido, optimización, checklist de producción | |
 
 ---
@@ -432,6 +432,26 @@ botones subir/bajar (accesibles y usables en móvil).
   periodo; suficiente para decenas de miles de inspecciones al año. Si crece
   más, se reemplaza por agregaciones SQL (`date_trunc`) o vistas materializadas
   sin cambiar la interfaz del servicio.
+
+## QR, reportes y carga masiva (Fases 6 y 8)
+
+- **QR**: cada elemento tiene un `qrToken` opaco; la etiqueta codifica
+  `${APP_URL}/q/<token>` (no expone ids ni datos). `/q/[token]` exige sesión y
+  muestra la ficha con *Realizar inspección*. *Regenerar QR* cambia el token y
+  deja inválida la etiqueta anterior. Etiquetas en PDF vectorial (`qrcode` +
+  `pdf-lib`, máx. 500 por archivo).
+- **Escáner** (`/scan`, `src/components/qr/qr-scanner.tsx`): cámara trasera con
+  `BarcodeDetector`, o `jsqr` cargado bajo demanda (iPhone). Solo acepta rutas
+  `/q/<token>` del mismo origen; alternativa manual por código.
+- **Reportes**: los servicios construyen un `TableReport` neutro
+  (`src/server/reports/types.ts`) que se renderiza a PDF (`pdf-lib`, columnas
+  con ajuste automático de ancho) o Excel (`exceljs`). Permiso
+  `reports.export`; el alcance por proceso se aplica igual que en el
+  dashboard.
+- **Carga masiva** (`import.service.ts`): plantilla con validaciones de datos,
+  `analyzeImport` (vista previa: crear/actualizar/error por fila) y
+  `applyImport` (una transacción, zonas primero, `scheduleFields`, auditoría
+  `import.inventory`). Límites: 5 MB y 5000 filas; permiso `elements.manage`.
 
 ## Estrategia de archivos
 

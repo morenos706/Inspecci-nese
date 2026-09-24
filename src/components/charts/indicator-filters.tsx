@@ -25,7 +25,10 @@ export function IndicatorFilters({
   values,
   today,
   options,
+  basePath = "/indicators",
 }: {
+  /** Página a la que apuntan los atajos y "Limpiar" (el formulario envía a la página actual). */
+  basePath?: string;
   values: { from: string; to: string; process?: string; site?: string; type?: string; responsible?: string; status?: string };
   today: string;
   options: { processes: Option[]; sites: Option[]; types: Option[]; users: Option[] };
@@ -45,7 +48,7 @@ export function IndicatorFilters({
     p.set("from", from);
     p.set("to", today);
     for (const k of ["process", "site", "type", "responsible", "status"] as const) if (values[k]) p.set(k, values[k]!);
-    return `/indicators?${p}`;
+    return `${basePath}?${p}`;
   };
   const select = (name: string, label: string, value: string | undefined, opts: { value: string; label: string }[]) => (
     <Select name={name} defaultValue={value ?? ""} aria-label={label} className="h-10">
@@ -94,7 +97,7 @@ export function IndicatorFilters({
           <Button type="submit" variant="outline" className="h-10 flex-1">
             Aplicar
           </Button>
-          <Link href="/indicators" className="flex h-10 items-center px-2 text-sm text-primary hover:underline">
+          <Link href={basePath} className="flex h-10 items-center px-2 text-sm text-primary hover:underline">
             Limpiar
           </Link>
         </div>

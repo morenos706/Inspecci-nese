@@ -1,4 +1,6 @@
-import { AlertTriangle, ClipboardList, Pencil } from "lucide-react";
+import { AlertTriangle, ClipboardList, FileSpreadsheet, FileText, Pencil, QrCode, RefreshCw } from "lucide-react";
+import { ConfirmButton } from "@/components/ui/confirm-button";
+import { regenerateQrAction } from "@/server/actions/elements.actions";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -124,6 +126,32 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader title="Código QR y documentos" description="Etiqueta para pegar en el elemento; al escanearla se abre esta ficha con «Realizar inspección»." />
+        <CardBody className="flex flex-wrap gap-2">
+          <a href={`/api/qr/labels?element=${element.id}`} className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted">
+            <QrCode className="h-4 w-4" aria-hidden /> Etiqueta QR (PDF)
+          </a>
+          <a href={`/api/reports/element/${element.id}`} className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted">
+            <FileText className="h-4 w-4 text-danger" aria-hidden /> Historial PDF
+          </a>
+          <a href={`/api/reports/element/${element.id}?format=xlsx`} className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted">
+            <FileSpreadsheet className="h-4 w-4 text-success" aria-hidden /> Historial Excel
+          </a>
+          {hasPermission(user, "elements.manage") && (
+            <ConfirmButton
+              action={regenerateQrAction.bind(null, element.id)}
+              title="Generar un nuevo código QR"
+              description="La etiqueta impresa actual dejará de funcionar. Úsalo si la etiqueta se dañó, se perdió o se copió."
+              confirmLabel="Generar nuevo QR"
+              variant="ghost"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden /> Regenerar QR
+            </ConfirmButton>
+          )}
+        </CardBody>
+      </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>

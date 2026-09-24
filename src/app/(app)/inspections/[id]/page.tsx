@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -95,6 +95,16 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
         title={`Inspección ${formatNumber(inspection.number)}`}
         description={`${inspection.element.code} · ${inspection.element.elementType.name} · ${inspection.site.name}${inspection.element.zone ? ` · ${inspection.element.zone.name}` : ""}`}
         back={{ href: "/inspections", label: "Inspecciones" }}
+        actions={
+          inspection.status === "COMPLETED" && (
+            <a
+              href={`/api/reports/inspection/${inspection.id}`}
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-muted"
+            >
+              <FileText className="h-4 w-4 text-danger" aria-hidden /> Informe PDF
+            </a>
+          )
+        }
       />
 
       {inspection.status === "COMPLETED" ? (

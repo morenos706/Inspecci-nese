@@ -55,6 +55,19 @@ hallazgos registrados vs. cerrados), hallazgos por prioridad, planes por estado
 y cumplimiento por proceso y por sede, con filtros por periodo, proceso, sede,
 tipo, responsable y estado. El seed incluye 12 meses de historial.
 
+**Carga masiva, reportes y QR ✅** (Fases 6 y 8):
+- **Carga masiva** (*Administración → Carga masiva*): plantilla Excel con listas
+  desplegables (zonas y elementos), vista previa con errores por fila y
+  aplicación en una sola transacción (crea o actualiza por código).
+- **Reportes** (*Reportes*): inspecciones, hallazgos, planes de acción,
+  inventario y cumplimiento en PDF o Excel, con los mismos filtros del
+  dashboard. Cada inspección tiene su **Informe PDF** (respuestas, hallazgos,
+  fotos y firma) y cada elemento su historial en PDF/Excel.
+- **QR**: etiquetas PDF (2×4 por hoja A4) por elemento, zona o todo el
+  inventario; **Escanear** abre la cámara dentro de la app y muestra la ficha
+  del elemento con el botón *Realizar inspección*. *Regenerar QR* invalida la
+  etiqueta anterior.
+
 ## Requisitos
 
 - Node.js ≥ 20.9 (recomendado 22)
@@ -195,6 +208,17 @@ En un servidor van al volumen `uploads` o a Amazon S3 / Cloudflare R2.
 3. Usa los atajos de periodo y los filtros (p. ej. Proceso = Producción): todo
    el tablero se recalcula con el mismo corte.
 4. Ingresa como `responsable@inspecciones.local`: solo verás su proceso.
+
+## Cómo probar carga masiva, reportes y QR
+
+1. Como `admin@inspecciones.local` → **Carga masiva** → *Descargar plantilla*.
+   Llena las hojas *Zonas* y *Elementos* (las filas de ejemplo se ignoran),
+   súbela, revisa la vista previa y pulsa *Aplicar*.
+2. **Reportes** → elige periodo y filtros → *PDF* o *Excel*.
+3. **Inventario** → *Etiquetas QR*, imprime y pega cada etiqueta en su elemento.
+4. En el celular, como brigadista → **Escanear** → apunta al QR: se abre la
+   ficha del elemento y puedes iniciar la inspección. Sin cámara, escribe el
+   código del elemento.
 
 ## Entornos y despliegue
 

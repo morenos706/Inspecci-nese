@@ -2,7 +2,10 @@ import {
   BarChart3,
   Boxes,
   ClipboardCheck,
+  FileText,
+  FileUp,
   ListTodo,
+  QrCode,
   TriangleAlert,
   Building2,
   KeyRound,
@@ -46,6 +49,13 @@ export const NAVIGATION: NavSection[] = [
         mobile: true,
       },
       {
+        href: "/scan",
+        label: "Escanear",
+        icon: QrCode,
+        anyOf: ["inspections.perform"],
+        mobile: true,
+      },
+      {
         href: "/findings",
         label: "Hallazgos",
         icon: TriangleAlert,
@@ -60,6 +70,12 @@ export const NAVIGATION: NavSection[] = [
         mobile: true,
       },
       {
+        href: "/reports",
+        label: "Reportes",
+        icon: FileText,
+        anyOf: ["reports.view", "reports.export"],
+      },
+      {
         href: "/inventory",
         label: "Inventario",
         icon: Boxes,
@@ -72,6 +88,7 @@ export const NAVIGATION: NavSection[] = [
     title: "Configuración",
     items: [
       { href: "/admin/element-types", label: "Tipos y preguntas", icon: ListChecks, anyOf: ["element_types.manage"] },
+      { href: "/admin/import", label: "Carga masiva", icon: FileUp, anyOf: ["elements.manage"] },
     ],
   },
   {
