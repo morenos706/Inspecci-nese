@@ -50,7 +50,7 @@ export const processSchema = z.object({
   active: zCheckbox,
 });
 
-// ------------------------------------------------------------ Sedes / áreas
+// ------------------------------------------------------------ Sedes / zonas
 export const siteSchema = z.object({
   id: zId.optional(),
   code: zCode(),
@@ -60,7 +60,7 @@ export const siteSchema = z.object({
   active: zCheckbox,
 });
 
-export const areaSchema = z.object({
+export const zoneSchema = z.object({
   id: zId.optional(),
   siteId: zId,
   code: zCode(),

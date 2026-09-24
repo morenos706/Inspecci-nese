@@ -40,7 +40,7 @@ export default async function EditElementPage({ params }: PageProps<"/inventory/
           elementTypeId: element.elementTypeId,
           processId: element.processId,
           siteId: element.siteId,
-          areaId: element.areaId,
+          zoneId: element.zoneId,
           location: element.location,
           responsibleId: element.responsibleId,
           frequency: element.frequency,

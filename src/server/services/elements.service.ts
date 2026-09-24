@@ -57,7 +57,7 @@ const listSelect = {
   elementType: { select: { id: true, name: true } },
   process: { select: { id: true, name: true } },
   site: { select: { id: true, name: true } },
-  area: { select: { id: true, name: true } },
+  zone: { select: { id: true, name: true } },
   responsible: { select: { id: true, name: true } },
 } satisfies Prisma.ElementSelect;
 
@@ -117,7 +117,7 @@ export async function getElement(id: string, user: CurrentUser) {
       qrToken: true,
       createdAt: true,
       updatedAt: true,
-      areaId: true,
+      zoneId: true,
       processId: true,
       siteId: true,
       elementTypeId: true,
@@ -166,15 +166,15 @@ export function generateQrToken() {
 }
 
 async function assertReferences(input: ElementInput, typeMustBeActive: boolean) {
-  const [type, process, site, area, responsible] = await Promise.all([
+  const [type, process, site, zone, responsible] = await Promise.all([
     db.elementType.findFirst({
       where: { id: input.elementTypeId, deletedAt: null, ...(typeMustBeActive ? { active: true } : {}) },
       select: { id: true },
     }),
     db.process.findFirst({ where: { id: input.processId, deletedAt: null, active: true }, select: { id: true } }),
     db.site.findFirst({ where: { id: input.siteId, deletedAt: null, active: true }, select: { id: true } }),
-    input.areaId
-      ? db.area.findFirst({ where: { id: input.areaId, siteId: input.siteId, deletedAt: null }, select: { id: true } })
+    input.zoneId
+      ? db.zone.findFirst({ where: { id: input.zoneId, siteId: input.siteId, deletedAt: null }, select: { id: true } })
       : Promise.resolve({ id: null }),
     input.responsibleId
       ? db.user.findFirst({ where: { id: input.responsibleId, active: true, deletedAt: null }, select: { id: true } })
@@ -184,7 +184,7 @@ async function assertReferences(input: ElementInput, typeMustBeActive: boolean) 
   if (!type) errors.elementTypeId = ["Tipo inválido o inactivo"];
   if (!process) errors.processId = ["Proceso inválido o inactivo"];
   if (!site) errors.siteId = ["Sede inválida o inactiva"];
-  if (!area) errors.areaId = ["El área no pertenece a la sede seleccionada"];
+  if (!zone) errors.zoneId = ["La zona no pertenece a la sede seleccionada"];
   if (!responsible) errors.responsibleId = ["Responsable inválido o inactivo"];
   if (Object.keys(errors).length) {
     throw new ValidationError(errors);
@@ -209,7 +209,7 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
         description: input.description ?? null,
         processId: input.processId,
         siteId: input.siteId,
-        areaId: input.areaId ?? null,
+        zoneId: input.zoneId ?? null,
         location: input.location ?? null,
         responsibleId: input.responsibleId ?? null,
         frequency: input.frequency,
@@ -239,7 +239,7 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
       description: true,
       processId: true,
       siteId: true,
-      areaId: true,
+      zoneId: true,
       location: true,
       responsibleId: true,
       frequency: true,
@@ -275,7 +275,7 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
     description: input.description ?? null,
     processId: input.processId,
     siteId: input.siteId,
-    areaId: input.areaId ?? null,
+    zoneId: input.zoneId ?? null,
     location: input.location ?? null,
     responsibleId: input.responsibleId ?? null,
     frequency: input.frequency,

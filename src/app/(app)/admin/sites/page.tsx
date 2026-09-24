@@ -11,7 +11,7 @@ import { listQuerySchema } from "@/lib/validation/admin";
 import { requirePagePermission } from "@/server/auth/current-user";
 import { listSites } from "@/server/services/sites.service";
 
-export const metadata = { title: "Sedes y áreas" };
+export const metadata = { title: "Sedes y zonas" };
 
 export default async function SitesPage({ searchParams }: PageProps<"/admin/sites">) {
   await requirePagePermission("sites.manage");
@@ -21,7 +21,7 @@ export default async function SitesPage({ searchParams }: PageProps<"/admin/site
   return (
     <>
       <PageHeader
-        title="Sedes y áreas"
+        title="Sedes y zonas"
         description="Ubicaciones físicas donde se encuentran los elementos."
         actions={
           <ButtonLink href="/admin/sites/new">
@@ -47,7 +47,7 @@ export default async function SitesPage({ searchParams }: PageProps<"/admin/site
             { key: "name", header: "Nombre", cell: (s) => s.name },
             { key: "code", header: "Código", cell: (s) => <code className="text-xs">{s.code}</code> },
             { key: "city", header: "Ciudad", cell: (s) => s.city ?? "—" },
-            { key: "areas", header: "Áreas", cell: (s) => <Badge>{s._count.areas}</Badge> },
+            { key: "zones", header: "Zonas", cell: (s) => <Badge>{s._count.zones}</Badge> },
             { key: "elements", header: "Elementos", cell: (s) => <Badge tone="primary">{s._count.elements}</Badge> },
             { key: "active", header: "Estado", cell: (s) => <ActiveBadge active={s.active} /> },
           ]}

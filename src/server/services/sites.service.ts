@@ -4,12 +4,12 @@ import { db } from "@/server/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit, diff } from "@/server/audit";
 import { NotFoundError } from "@/server/errors";
-import type { areaSchema, ListQuery, siteSchema } from "@/lib/validation/admin";
+import type { zoneSchema, ListQuery, siteSchema } from "@/lib/validation/admin";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { activeFilter, paginated, paginationArgs } from "@/server/services/pagination";
 
 type SiteInput = z.infer<typeof siteSchema>;
-type AreaInput = z.infer<typeof areaSchema>;
+type ZoneInput = z.infer<typeof zoneSchema>;
 
 export async function listSites(query: ListQuery) {
   const where: Prisma.SiteWhereInput = {
@@ -35,7 +35,7 @@ export async function listSites(query: ListQuery) {
         name: true,
         city: true,
         active: true,
-        _count: { select: { areas: { where: { deletedAt: null } }, elements: { where: { deletedAt: null } } } },
+        _count: { select: { zones: { where: { deletedAt: null } }, elements: { where: { deletedAt: null } } } },
       },
       ...paginationArgs(query.page),
     }),
@@ -44,14 +44,14 @@ export async function listSites(query: ListQuery) {
   return paginated(items, total, query.page);
 }
 
-/** Sedes con sus áreas activas (para selects dependientes sede → área). */
+/** Sedes con sus zonas activas (para selects dependientes sede → zona). */
 export async function listSiteOptions() {
   return db.site.findMany({
     where: { deletedAt: null, active: true },
     select: {
       id: true,
       name: true,
-      areas: { where: { deletedAt: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
+      zones: { where: { deletedAt: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
     },
     orderBy: { name: "asc" },
   });
@@ -67,7 +67,7 @@ export async function getSite(id: string) {
       address: true,
       city: true,
       active: true,
-      areas: {
+      zones: {
         where: { deletedAt: null },
         orderBy: { name: "asc" },
         select: {
@@ -119,7 +119,7 @@ export async function updateSite(input: SiteInput & { id: string }, ctx: Service
   });
 }
 
-export async function saveArea(input: AreaInput, ctx: ServiceContext) {
+export async function saveZone(input: ZoneInput, ctx: ServiceContext) {
   const site = await db.site.findFirst({ where: { id: input.siteId, deletedAt: null }, select: { id: true } });
   if (!site) throw new NotFoundError("La sede no existe.");
 
@@ -132,24 +132,24 @@ export async function saveArea(input: AreaInput, ctx: ServiceContext) {
 
   if (!input.id) {
     return db.$transaction(async (tx) => {
-      const area = await tx.area.create({ data: { ...data, siteId: input.siteId }, select: { id: true } });
-      await audit(auditCtx(ctx), { action: "area.create", entityType: "Area", entityId: area.id, after: input }, tx);
-      return area;
+      const zone = await tx.zone.create({ data: { ...data, siteId: input.siteId }, select: { id: true } });
+      await audit(auditCtx(ctx), { action: "zone.create", entityType: "Zone", entityId: zone.id, after: input }, tx);
+      return zone;
     });
   }
 
-  const current = await db.area.findFirst({
+  const current = await db.zone.findFirst({
     where: { id: input.id, siteId: input.siteId, deletedAt: null },
     select: { code: true, name: true, description: true, active: true },
   });
-  if (!current) throw new NotFoundError("El área no existe.");
+  if (!current) throw new NotFoundError("La zona no existe.");
   const changes = diff(current, data);
   if (!changes.changed) return { id: input.id };
   await db.$transaction(async (tx) => {
-    await tx.area.update({ where: { id: input.id }, data: changes.after });
+    await tx.zone.update({ where: { id: input.id }, data: changes.after });
     await audit(
       auditCtx(ctx),
-      { action: "area.update", entityType: "Area", entityId: input.id, before: changes.before, after: changes.after },
+      { action: "zone.update", entityType: "Zone", entityId: input.id, before: changes.before, after: changes.after },
       tx,
     );
   });

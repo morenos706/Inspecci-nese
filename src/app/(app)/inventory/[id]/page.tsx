@@ -6,6 +6,7 @@ import { DataList } from "@/components/ui/data-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScheduleBadge } from "@/components/ui/schedule-badge";
+import { StartInspectionButton } from "@/components/inspections/start-inspection-button";
 import {
   ELEMENT_STATUS_LABELS,
   ELEMENT_STATUS_TONES,
@@ -51,11 +52,16 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
         description={`${element.elementType.name} · ${element.name}`}
         back={{ href: "/inventory", label: "Inventario" }}
         actions={
-          hasPermission(user, "elements.manage") && (
-            <ButtonLink href={`/inventory/${element.id}/edit`} variant="outline">
-              <Pencil className="h-4 w-4" aria-hidden /> Editar
-            </ButtonLink>
-          )
+          <>
+            {hasPermission(user, "inspections.perform") && element.status === "ACTIVE" && (
+              <StartInspectionButton elementId={element.id} label="Realizar inspección" size="lg" />
+            )}
+            {hasPermission(user, "elements.manage") && (
+              <ButtonLink href={`/inventory/${element.id}/edit`} variant="outline" size="lg">
+                <Pencil className="h-4 w-4" aria-hidden /> Editar
+              </ButtonLink>
+            )}
+          </>
         }
       />
 
@@ -64,9 +70,9 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
           <CardHeader title="Ficha del elemento" />
           <CardBody>
             <dl className="grid gap-4 sm:grid-cols-2">
-              <Field label="Sede / área">
+              <Field label="Sede / zona">
                 {element.site.name}
-                {element.area && ` · ${element.area.name}`}
+                {element.zone && ` · ${element.zone.name}`}
               </Field>
               <Field label="Ubicación">{element.location ?? "—"}</Field>
               <Field label="Proceso">{element.process.name}</Field>
@@ -139,6 +145,7 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
             caption="Historial de inspecciones"
             rows={element.inspections}
             rowKey={(i) => i.id}
+            rowHref={(i) => `/inspections/${i.id}`}
             empty={<EmptyState icon={ClipboardList} title="Sin inspecciones registradas" />}
             columns={[
               { key: "number", header: "Inspección", cell: (i) => formatNumber(i.number) },

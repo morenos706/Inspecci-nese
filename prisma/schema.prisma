@@ -288,7 +288,7 @@ model Site {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  areas       Area[]
+  zones       Zone[]
   elements    Element[]
   inspections Inspection[]
   findings    Finding[]
@@ -297,7 +297,10 @@ model Site {
   @@map("sites")
 }
 
-model Area {
+// Zona física dentro de una sede (Zona 1, Zona 2…). Agrupa los elementos que
+// recorren los brigadistas al inspeccionar; cualquier brigadista puede
+// inspeccionar cualquier zona.
+model Zone {
   id          String    @id @default(cuid())
   siteId      String
   code        String
@@ -313,7 +316,7 @@ model Area {
 
   @@unique([siteId, code])
   @@index([siteId, active])
-  @@map("areas")
+  @@map("zones")
 }
 
 // -----------------------------------------------------------------------------
@@ -407,7 +410,7 @@ model Element {
   description         String?
   processId           String
   siteId              String
-  areaId              String?
+  zoneId              String?
   location            String?
   responsibleId       String?
   frequency           InspectionFrequency
@@ -426,7 +429,7 @@ model Element {
   elementType ElementType @relation(fields: [elementTypeId], references: [id], onDelete: Restrict)
   process     Process     @relation(fields: [processId], references: [id], onDelete: Restrict)
   site        Site        @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  area        Area?       @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  zone        Zone?       @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   responsible User?       @relation("ElementResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
 
   inspections Inspection[]
@@ -436,6 +439,7 @@ model Element {
   @@index([elementTypeId])
   @@index([processId, status])
   @@index([siteId, status])
+  @@index([zoneId, status])
   @@index([responsibleId])
   @@index([nextInspectionAt])
   @@index([status, dueSoonAt])

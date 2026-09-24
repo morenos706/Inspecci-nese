@@ -101,7 +101,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
               cell: (e) => (
                 <span>
                   {e.site.name}
-                  {e.area && ` · ${e.area.name}`}
+                  {e.zone && ` · ${e.zone.name}`}
                   {e.location && <span className="block text-xs text-subtle">{e.location}</span>}
                 </span>
               ),

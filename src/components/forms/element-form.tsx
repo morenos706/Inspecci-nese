@@ -30,7 +30,7 @@ export interface ElementFormValues {
   elementTypeId: string;
   processId: string;
   siteId: string;
-  areaId: string | null;
+  zoneId: string | null;
   location: string | null;
   responsibleId: string | null;
   frequency: InspectionFrequency;
@@ -55,7 +55,7 @@ export function ElementForm({
   types: TypeOption[];
   codeSuggestions: Record<string, string>;
   processes: { id: string; name: string }[];
-  sites: { id: string; name: string; areas: { id: string; name: string }[] }[];
+  sites: { id: string; name: string; zones: { id: string; name: string }[] }[];
   users: { id: string; name: string; jobTitle: string | null }[];
 }) {
   const { onSubmit, pending, errors } = useActionForm(saveElementAction);
@@ -66,7 +66,7 @@ export function ElementForm({
   const [lastDate, setLastDate] = useState(toInputDate(element?.lastInspectionAt));
   const [firstDate, setFirstDate] = useState(element?.lastInspectionAt ? "" : toInputDate(element?.nextInspectionAt));
   const hasInspections = (element?.inspectionCount ?? 0) > 0;
-  const areas = sites.find((s) => s.id === siteId)?.areas ?? [];
+  const zones = sites.find((s) => s.id === siteId)?.zones ?? [];
 
   function onTypeChange(id: string) {
     const type = types.find((t) => t.id === id);
@@ -165,15 +165,15 @@ export function ElementForm({
               ))}
             </Select>
           </FormField>
-          <FormField label="Área" errors={errors("areaId")}>
+          <FormField label="Zona" errors={errors("zoneId")}>
             <Select
               key={siteId}
-              name="areaId"
-              defaultValue={element?.siteId === siteId ? (element?.areaId ?? "") : ""}
+              name="zoneId"
+              defaultValue={element?.siteId === siteId ? (element?.zoneId ?? "") : ""}
               disabled={!siteId}
             >
-              <option value="">{siteId ? "Sin área" : "Selecciona primero la sede"}</option>
-              {areas.map((a) => (
+              <option value="">{siteId ? "Sin zona" : "Selecciona primero la sede"}</option>
+              {zones.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>

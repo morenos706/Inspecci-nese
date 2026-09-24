@@ -8,7 +8,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { FormActions } from "@/components/forms/form-actions";
 import { useActionForm } from "@/hooks/use-action-form";
-import { saveAreaAction, saveSiteAction } from "@/server/actions/sites.actions";
+import { saveZoneAction, saveSiteAction } from "@/server/actions/sites.actions";
 
 export function SiteForm({
   site,
@@ -47,41 +47,41 @@ export function SiteForm({
   );
 }
 
-/** Formulario compacto de área (crear o editar en línea dentro de la ficha de la sede). */
-export function AreaForm({
+/** Formulario compacto de zona (crear o editar en línea dentro de la ficha de la sede). */
+export function ZoneForm({
   siteId,
-  area,
+  zone,
   onDone,
 }: {
   siteId: string;
-  area?: { id: string; code: string; name: string; description: string | null; active: boolean };
+  zone?: { id: string; code: string; name: string; description: string | null; active: boolean };
   onDone?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const { onSubmit, pending, errors } = useActionForm(saveAreaAction, {
+  const { onSubmit, pending, errors } = useActionForm(saveZoneAction, {
     onSuccess: () => {
-      if (!area) formRef.current?.reset();
+      if (!zone) formRef.current?.reset();
       onDone?.();
     },
   });
-  const prefix = area?.id ?? "new";
+  const prefix = zone?.id ?? "new";
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end" noValidate>
       <input type="hidden" name="siteId" value={siteId} />
-      {area && <input type="hidden" name="id" value={area.id} />}
-      <FormField label="Nombre del área" errors={errors("name")} required>
-        <Input id={`${prefix}-name`} name="name" defaultValue={area?.name} maxLength={120} placeholder="Ej.: Bodega principal" />
+      {zone && <input type="hidden" name="id" value={zone.id} />}
+      <FormField label="Nombre de la zona" errors={errors("name")} required>
+        <Input id={`${prefix}-name`} name="name" defaultValue={zone?.name} maxLength={120} placeholder="Ej.: Bodega principal" />
       </FormField>
       <FormField label="Código" errors={errors("code")} required>
-        <Input id={`${prefix}-code`} name="code" defaultValue={area?.code} className="uppercase" maxLength={30} placeholder="BOD" />
+        <Input id={`${prefix}-code`} name="code" defaultValue={zone?.code} className="uppercase" maxLength={30} placeholder="BOD" />
       </FormField>
-      <input type="hidden" name="description" value={area?.description ?? ""} />
+      <input type="hidden" name="description" value={zone?.description ?? ""} />
       <div className="flex items-center gap-3">
-        {area && <Checkbox id={`${prefix}-active`} name="active" defaultChecked={area.active} label="Activa" />}
-        {!area && <input type="hidden" name="active" value="on" />}
-        <Button type="submit" loading={pending} variant={area ? "primary" : "secondary"} className="w-full sm:w-auto">
-          {area ? "Guardar" : "Agregar área"}
+        {zone && <Checkbox id={`${prefix}-active`} name="active" defaultChecked={zone.active} label="Activa" />}
+        {!zone && <input type="hidden" name="active" value="on" />}
+        <Button type="submit" loading={pending} variant={zone ? "primary" : "secondary"} className="w-full sm:w-auto">
+          {zone ? "Guardar" : "Agregar zona"}
         </Button>
       </div>
     </form>

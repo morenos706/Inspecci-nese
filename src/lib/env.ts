@@ -23,6 +23,9 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
   MAIL_FROM: z.string().default("Inspecciones <no-reply@inspecciones.local>"),
 
+  // s3: AWS S3 / Cloudflare R2 / MinIO · local: disco (solo desarrollo)
+  STORAGE_DRIVER: z.enum(["s3", "local"]).default("s3"),
+  LOCAL_STORAGE_DIR: z.string().default(".storage"),
   S3_ENDPOINT: z.string().optional().default(""),
   S3_REGION: z.string().default("us-east-1"),
   S3_BUCKET: z.string().default("inspecciones"),
@@ -33,6 +36,7 @@ const envSchema = z.object({
     .default("true")
     .transform((v) => v === "true"),
   UPLOAD_MAX_MB: z.coerce.number().positive().default(10),
+  APP_TIMEZONE: z.string().default("America/Bogota"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -45,6 +49,9 @@ function loadEnv(): Env {
   }
   if (parsed.data.APP_ENV === "production" && parsed.data.AUTH_SECRET.startsWith("change-me")) {
     throw new Error("AUTH_SECRET no puede usar el valor de ejemplo en producción");
+  }
+  if (parsed.data.STORAGE_DRIVER === "s3" && (!parsed.data.S3_ACCESS_KEY_ID || !parsed.data.S3_SECRET_ACCESS_KEY)) {
+    throw new Error("STORAGE_DRIVER=s3 requiere S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY");
   }
   return parsed.data;
 }

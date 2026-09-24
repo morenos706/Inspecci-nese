@@ -137,7 +137,7 @@ export const elementSchema = z
     description: zOptionalText(1000),
     processId: z.string({ error: "Selecciona el proceso" }).min(1, "Selecciona el proceso"),
     siteId: z.string({ error: "Selecciona la sede" }).min(1, "Selecciona la sede"),
-    areaId: zId.optional(),
+    zoneId: zId.optional(),
     location: zOptionalText(200),
     responsibleId: zId.optional(),
     frequency: zFrequency,

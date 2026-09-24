@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { AreaForm, SiteForm } from "@/components/forms/site-forms";
-import { AreaList } from "@/components/forms/area-list";
+import { ZoneForm, SiteForm } from "@/components/forms/site-forms";
+import { ZoneList } from "@/components/forms/zone-list";
 import { requirePagePermission } from "@/server/auth/current-user";
 import { orNotFound } from "@/server/page-helpers";
 import { getSite } from "@/server/services/sites.service";
@@ -19,11 +19,11 @@ export default async function EditSitePage({ params }: PageProps<"/admin/sites/[
       <div className="space-y-6">
         <SiteForm site={site} />
         <Card>
-          <CardHeader title="Áreas" description="Zonas dentro de la sede (bodega, oficinas, planta…)." />
+          <CardHeader title="Zonas" description="Zonas de inspección dentro de la sede. Cada elemento pertenece a una zona." />
           <CardBody className="border-b border-border">
-            <AreaForm siteId={site.id} />
+            <ZoneForm siteId={site.id} />
           </CardBody>
-          <AreaList siteId={site.id} areas={site.areas} />
+          <ZoneList siteId={site.id} zones={site.zones} />
         </Card>
       </div>
     </>

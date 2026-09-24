@@ -19,7 +19,7 @@ export const PERMISSIONS = {
   "users.manage": { module: "Administración", description: "Crear, editar y desactivar usuarios" },
   "roles.manage": { module: "Administración", description: "Gestionar roles y permisos" },
   "processes.manage": { module: "Administración", description: "Gestionar procesos" },
-  "sites.manage": { module: "Administración", description: "Gestionar sedes y áreas" },
+  "sites.manage": { module: "Administración", description: "Gestionar sedes y zonas" },
   "settings.manage": { module: "Administración", description: "Configurar parámetros del sistema" },
   "audit.read": { module: "Administración", description: "Consultar auditoría" },
 
@@ -82,8 +82,8 @@ export const SYSTEM_ROLES = {
     permissions: ALL_PERMISSIONS,
   },
   INSPECTOR: {
-    name: "Inspector",
-    description: "Realiza inspecciones y registra hallazgos",
+    name: "Brigadista",
+    description: "Realiza inspecciones por zonas y registra hallazgos",
     permissions: [
       "elements.read.all",
       "inspections.read.own",

@@ -6,12 +6,12 @@ import { db } from "@/server/db";
  * los indicadores de inspecciones, hallazgos y planes de acción.
  */
 export async function getFoundationSummary() {
-  const [users, processes, sites, areas, roles] = await db.$transaction([
+  const [users, processes, sites, zones, roles] = await db.$transaction([
     db.user.count({ where: { deletedAt: null, active: true } }),
     db.process.count({ where: { deletedAt: null, active: true } }),
     db.site.count({ where: { deletedAt: null, active: true } }),
-    db.area.count({ where: { deletedAt: null, active: true } }),
+    db.zone.count({ where: { deletedAt: null, active: true } }),
     db.role.count({ where: { active: true } }),
   ]);
-  return { users, processes, sites, areas, roles };
+  return { users, processes, sites, zones, roles };
 }

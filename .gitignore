@@ -43,3 +43,6 @@ next-env.d.ts
 
 # prisma client generado
 /src/generated/
+
+# archivos subidos en desarrollo (STORAGE_DRIVER=local)
+/.storage/

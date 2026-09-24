@@ -1,4 +1,5 @@
 import { AlertOctagon, Boxes, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
+import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -20,7 +21,17 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader title={`Hola, ${firstName}`} description="Resumen general del sistema de inspecciones." />
+      <PageHeader
+        title={`Hola, ${firstName}`}
+        description="Resumen general del sistema de inspecciones."
+        actions={
+          hasPermission(user, "inspections.perform") && (
+            <ButtonLink href="/inspections" size="lg">
+              Ir a mis inspecciones
+            </ButtonLink>
+          )
+        }
+      />
 
       {schedule && (
         <section aria-label="Programación de inspecciones" className="mb-6">
@@ -40,7 +51,7 @@ export default async function DashboardPage() {
           <StatCard label="Roles" value={summary.roles} icon={KeyRound} tone="neutral" href="/admin/roles" />
           <StatCard label="Procesos" value={summary.processes} icon={Network} tone="success" href="/admin/processes" />
           <StatCard label="Sedes" value={summary.sites} icon={Building2} tone="warning" href="/admin/sites" />
-          <StatCard label="Áreas" value={summary.areas} icon={MapPin} tone="neutral" href="/admin/sites" />
+          <StatCard label="Zonas" value={summary.zones} icon={MapPin} tone="neutral" href="/admin/sites" />
         </section>
       )}
 

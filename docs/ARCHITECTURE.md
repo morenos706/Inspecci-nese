@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fase 2 (Configuración e inventario).
+> Última actualización: Fase 3 (Inspecciones por zona).
 
 ---
 
@@ -130,7 +130,7 @@ Role ──< RolePermission >── Permission
  │
 UserRole                    UserProcess >── Process ──< Element >── ElementType ──< InspectionTemplate ──< InspectionQuestion
  │                              │                        │  │  │                         │                        │
-User ──────────────────────────┘                         │  │  └── Site ──< Area         │                        │
+User ──────────────────────────┘                         │  │  └── Site ──< Zone         │                        │
  │  ├──< Session, PasswordResetToken                     │  └──< Inspection >───────────┘                        │
  │  ├──< Notification ──< NotificationDelivery (canal)   │         └──< InspectionAnswer >──────────────────────┘
  │  └──< AuditLog                                        │                   │
@@ -145,7 +145,7 @@ Cardinalidades clave:
 |---|---|---|
 | User ↔ Role | N:M (`user_roles`) | Permisos efectivos = unión de roles |
 | User ↔ Process | N:M (`user_processes`) | Define el alcance `*.read.process` |
-| Site → Area | 1:N | `@@unique([siteId, code])` |
+| Site → Zone | 1:N | `@@unique([siteId, code])`. Zona = agrupación física que recorren los brigadistas |
 | ElementType → InspectionTemplate | 1:N (versionado) | Una plantilla `PUBLISHED` activa por tipo |
 | Template → Question | 1:N | Ordenadas por `order`; tipo de respuesta configurable |
 | Element → Inspection | 1:N | La inspección guarda `processId/siteId` como *snapshot* |
@@ -260,10 +260,10 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 
 | Fase | Alcance | Estado |
 |---|---|---|
-| 1 Fundación | Proyecto, Prisma + esquema completo, auth (login/logout/sesiones/recuperación), usuarios, roles/permisos, procesos, sedes/áreas, layout responsive, PWA manifest, auditoría base, Docker, seed | ✅ |
+| 1 Fundación | Proyecto, Prisma + esquema completo, auth (login/logout/sesiones/recuperación), usuarios, roles/permisos, procesos, sedes/zonas, layout responsive, PWA manifest, auditoría base, Docker, seed | ✅ |
 | 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ✅ |
-| 3 Inspecciones | Mis inspecciones, formulario dinámico móvil, autoguardado, fotos a S3 (URL firmada), finalización y resultado | ⏭ |
-| 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | |
+| 3 Inspecciones | Mis inspecciones por zona, formulario dinámico móvil, autoguardado, hallazgos en línea, fotos (S3), finalización, resultado y reprogramación | ✅ |
+| 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | ⏭ |
 | 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | |
 | 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
 | 7 Notificaciones | In-app, correo, recordatorios y vencimientos (job programado) | |
@@ -329,18 +329,51 @@ Edición segura: una pregunta con respuestas no puede cambiar de tipo (se
 desactiva y se crea otra); eliminar es borrado lógico; el orden se cambia con
 botones subir/bajar (accesibles y usables en móvil).
 
-## Estrategia de archivos (Fase 3)
+## Zonas y ejecución de inspecciones (Fase 3)
 
-1. Cliente solicita `createUploadUrl({ entity, mimeType, size })`.
-2. Servidor valida permiso, MIME permitido (`image/jpeg|png|webp|heic`,
-   `application/pdf`), tamaño ≤ `UPLOAD_MAX_MB`, genera `storageKey`
-   (`{entidad}/{yyyy}/{mm}/{cuid}.{ext}`, nunca el nombre original) y devuelve
-   una URL **PUT firmada** (5 min).
-3. El cliente comprime (máx. 1920 px, JPEG 0.8) y sube directo al bucket.
-4. Cliente confirma → servidor verifica con `HeadObject` tamaño/tipo y crea
-   `Evidence`.
-5. Para ver: URL **GET firmada** de corta duración tras verificar permiso sobre
-   la entidad. El bucket es privado.
+- Cada sede se divide en **zonas** (Zona 1, Zona 2…); cada elemento pertenece a
+  una zona. No hay asignación individual: **cualquier brigadista** (rol
+  `INSPECTOR`, permiso `inspections.perform`) puede inspeccionar cualquier zona.
+- "Mis inspecciones": inspecciones en curso del brigadista + tarjetas de zona
+  con vencidas / próximas a vencer (misma lógica central de programación). Los
+  elementos activos sin zona aparecen en "Sin zona asignada" por sede.
+- Inicio: crea la inspección `IN_PROGRESS` con la plantilla publicada; si el
+  brigadista ya tiene una en curso para ese elemento, la retoma. Dos
+  brigadistas pueden inspeccionar el mismo elemento (se muestra "En curso
+  por…"): así una inspección abandonada nunca bloquea el elemento.
+- Autoguardado por respuesta (`saveAnswer`): el servidor valida el valor,
+  evalúa el cumplimiento y guarda la copia de la pregunta.
+- "No cumple" + `generatesFinding` → panel de hallazgo en línea con prioridad
+  sugerida por la pregunta, responsable sugerido (responsable del elemento) y
+  fecha límite según prioridad (crítica 1 día, alta 7, media 15, baja 30). Al
+  registrarlo se crea también el **primer plan de acción** (pendiente).
+- Finalizar: exige las obligatorias (en preguntas de foto, al menos una foto),
+  advierte no conformidades sin hallazgo, calcula % y resultado
+  (`computeInspectionResult`) y reprograma el elemento con `scheduleFields()`
+  en la misma transacción.
+- Anular: solo en curso y sin hallazgos. Mientras la inspección no se
+  finaliza, sus hallazgos son borradores que el brigadista puede eliminar.
+
+## Estrategia de archivos
+
+Decisión de implementación (Fase 3): las fotos se **comprimen en el navegador**
+(lado mayor 1920 px, JPEG 80 %, ~300–600 KB) y se suben **a través de la app**
+(`POST /api/evidences`), que las guarda en el bucket. Frente a la URL firmada
+directa al bucket planteada inicialmente, esto permite:
+
+- Validar el **tipo real por contenido** (magic bytes: JPEG/PNG/WEBP/PDF), no
+  por extensión ni por el MIME declarado.
+- No depender de configurar CORS en el bucket (S3/R2/MinIO).
+- Mantener el bucket **privado**: `GET /api/evidences/{id}` verifica permisos
+  (quien subió, o alcance sobre la inspección / hallazgo / plan / elemento) y
+  transmite el archivo con `nosniff` y CSP restrictiva.
+
+Otras reglas: tamaño máximo `UPLOAD_MAX_MB`, máximo 10 archivos por respuesta o
+hallazgo, clave generada por el servidor (`inspections/{aaaa}/{mm}/{uuid}.jpg`),
+checksum SHA-256, verificación de `Origin` (CSRF) en la subida y borrado
+lógico. Proveedores: `STORAGE_DRIVER=s3` (AWS S3, Cloudflare R2, MinIO) o
+`local` (disco, solo desarrollo). Si el volumen de archivos crece mucho, se
+puede pasar a URL firmada directa conservando la validación al confirmar.
 
 ## Estrategia de notificaciones (Fase 7)
 
@@ -359,7 +392,7 @@ botones subir/bajar (accesibles y usables en móvil).
   la misma transacción del cambio. `before/after` guardan solo campos modificados
   (`diff`) y se redactan secretos.
 - Registra IP y user-agent. Ya cubre: login/logout/fallos, recuperación y
-  cambio de contraseña, usuarios, roles, procesos, sedes y áreas.
+  cambio de contraseña, usuarios, roles, procesos, sedes y zonas.
 - Visor con filtros en Fase 9.
 
 ## Estrategia de pruebas

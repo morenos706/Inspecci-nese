@@ -12,7 +12,7 @@ evidencias, QR, indicadores y reportes.
 
 **Fase 1 — Fundación ✅**: autenticación (login, logout, sesiones revocables,
 recuperación de contraseña, bloqueo por intentos, rate limiting), usuarios,
-roles y permisos configurables, procesos, sedes y áreas, layout responsive
+roles y permisos configurables, procesos, sedes y zonas, layout responsive
 (sidebar en escritorio, barra inferior en móvil), manifest PWA, auditoría,
 esquema de base de datos completo, seed de demostración y Docker.
 
@@ -23,6 +23,14 @@ filtros por tipo/proceso/sede/estado/programación, alcance por proceso,
 código sugerido, sede → área dependiente, cálculo centralizado de la próxima
 inspección (🟢 al día · 🟡 próxima a vencer · 🔴 vencida) y ficha del elemento
 con hallazgos abiertos e historial.
+
+**Fase 3 — Inspecciones ✅**: elementos agrupados por **zonas** dentro de cada
+sede; cualquier brigadista inspecciona cualquier zona. "Mis inspecciones" por
+zona (vencidas / próximas), formulario dinámico para celular con botones grandes
+y autoguardado, hallazgo en línea al responder "No cumple" (con plan de acción
+inicial), fotos desde cámara o galería (comprimidas y validadas), finalización
+con cálculo de cumplimiento y reprogramación automática, anulación e historial
+filtrable.
 
 ## Requisitos
 
@@ -60,12 +68,12 @@ Contraseña de todos: `Cambiar123*` (configurable con `SEED_DEFAULT_PASSWORD`).
 | Correo | Rol |
 |---|---|
 | admin@inspecciones.local | Administrador |
-| inspector@inspecciones.local | Inspector |
+| inspector@inspecciones.local | Brigadista |
 | responsable@inspecciones.local | Responsable de proceso + Responsable de acción (Producción) |
 | accion@inspecciones.local | Responsable de acción |
 | gerencia@inspecciones.local | Consulta / Gerencia |
 
-El seed también crea 4 procesos, 2 sedes con áreas, 3 tipos de elemento con
+El seed también crea 4 procesos, 2 sedes con 5 zonas, 3 tipos de elemento con
 sus preguntas, 11 elementos (incluido `EXT-023`), inspecciones, hallazgos y
 planes de acción para probar las fases siguientes.
 
@@ -89,8 +97,8 @@ planes de acción para probar las fases siguientes.
 1. Ingresar como `admin@inspecciones.local`.
 2. **Procesos** → Nuevo proceso (p. ej. `Logística`, código `log` → se guarda `LOG`).
    Intentar repetir el código: el sistema lo rechaza.
-3. **Sedes y áreas** → Nueva sede → en la ficha, agregar áreas.
-4. **Usuarios** → Nuevo usuario con rol Inspector. Con contraseña temporal, el
+3. **Sedes y zonas** → Nueva sede → en la ficha, agregar zonas.
+4. **Usuarios** → Nuevo usuario con rol Brigadista. Con contraseña temporal, el
    usuario verá un aviso para cambiarla; sin contraseña, recibe un correo de
    invitación (Mailpit).
 5. **Roles y permisos** → editar "Consulta / Gerencia" y quitar un permiso.
@@ -109,7 +117,7 @@ planes de acción para probar las fases siguientes.
    cumple?» = Sí (pregunta negativa); Selección con opciones y marcando las que
    no cumplen; Número con rango. Reordénalas con las flechas, edita y elimina.
 3. **Inventario** → Nuevo elemento → elige `Lavaojos`: se sugiere `LAV-001` y
-   la frecuencia del tipo. Al elegir la sede se filtran sus áreas. Con última
+   la frecuencia del tipo. Al elegir la sede se filtran sus zonas. Con última
    inspección `01/09/2026` y frecuencia mensual la vista previa muestra
    `01/10/2026`.
 4. En el inventario filtra por **Programación: Vencida**; en **Inicio** los
@@ -119,6 +127,25 @@ planes de acción para probar las fases siguientes.
 6. Ingresa como `responsable@inspecciones.local` (Producción): solo ve
    elementos de su proceso y no puede crear elementos; como
    `inspector@inspecciones.local` no accede a Tipos y preguntas.
+
+## Cómo probar la Fase 3
+
+1. Ingresa desde el celular (o con la vista móvil del navegador) como
+   `inspector@inspecciones.local` → **Ir a mis inspecciones**.
+2. Elige **Zona 1 – Bodega principal** → **Inspeccionar** en `EXT-023`.
+3. Responde "¿Tiene acceso libre?" con **NO**: aparece el registro del hallazgo
+   con prioridad, responsable y fecha límite sugeridos. Regístralo y agrégale
+   una foto con **Tomar foto**.
+4. Intenta **Finalizar** antes de terminar: el sistema indica las obligatorias
+   pendientes. Responde el resto y finaliza: verás el resultado (%) y la
+   próxima inspección del elemento.
+5. Como `gerencia@inspecciones.local` revisa **Inspecciones → Historial**; como
+   `responsable@inspecciones.local` (Producción) verás la inspección y las
+   fotos de su proceso.
+
+Fotos en local: con `docker compose up -d` se guardan en MinIO (consola
+http://localhost:9001, usuario y clave `minioadmin`). Sin Docker usa
+`STORAGE_DRIVER=local` y se guardan en `.storage/`.
 
 ## Entornos y despliegue
 
@@ -148,6 +175,7 @@ PostgreSQL gestionado con backups, y un bucket S3/R2 privado.
 | `Configuración de entorno inválida` al arrancar | Falta una variable en `.env` (ver `.env.example`) |
 | `Cannot find module '@/generated/prisma/client'` | Ejecutar `npm run db:generate` |
 | `P1001 Can't reach database server` | PostgreSQL no está arriba: `docker compose up -d` |
+| Las fotos no suben | Revisa `STORAGE_DRIVER` y las variables `S3_*`; con MinIO el bucket `inspecciones` lo crea `minio-init`. Máximo `UPLOAD_MAX_MB` por foto |
 | No llegan correos | Revisar Mailpit (http://localhost:8025) o dejar `SMTP_HOST=` para verlos en consola |
 | "Demasiados intentos" al iniciar sesión | Rate limit (5 intentos / 15 min por correo+IP). Reiniciar el servidor en desarrollo |
 | Cuenta bloqueada | 10 intentos fallidos bloquean 15 min; un admin puede desbloquear desde la ficha del usuario |

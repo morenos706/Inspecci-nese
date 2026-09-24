@@ -193,7 +193,7 @@ async function seedDemo() {
     ),
   );
 
-  // Sedes y áreas
+  // Sedes y zonas
   const principal = await db.site.upsert({
     where: { code: "PRINCIPAL" },
     update: {},
@@ -204,27 +204,27 @@ async function seedDemo() {
     update: {},
     create: { code: "NORTE", name: "Sede Norte", city: "Bogotá", address: "Autopista Norte # 170-50" },
   });
-  const areaDefs: [string, string, string][] = [
-    [principal.id, "BOD", "Bodega Principal"],
-    [principal.id, "OFI", "Oficinas"],
-    [principal.id, "PLA", "Planta de producción"],
-    [norte.id, "REC", "Recepción"],
-    [norte.id, "PAR", "Parqueadero"],
+  const zoneDefs: [string, string, string][] = [
+    [principal.id, "BOD", "Zona 1 – Bodega principal"],
+    [principal.id, "OFI", "Zona 2 – Oficinas"],
+    [principal.id, "PLA", "Zona 3 – Planta de producción"],
+    [norte.id, "REC", "Zona 1 – Recepción"],
+    [norte.id, "PAR", "Zona 2 – Parqueadero"],
   ];
-  const areas: Record<string, string> = {};
-  for (const [siteId, code, name] of areaDefs) {
-    const a = await db.area.upsert({
+  const zones: Record<string, string> = {};
+  for (const [siteId, code, name] of zoneDefs) {
+    const a = await db.zone.upsert({
       where: { siteId_code: { siteId, code } },
       update: {},
       create: { siteId, code, name },
     });
-    areas[code] = a.id;
+    zones[code] = a.id;
   }
 
   // Usuarios
   const userDefs = [
     { email: "admin@inspecciones.local", name: "Administrador del Sistema", jobTitle: "Coordinador SST", roles: ["ADMIN"], processes: [] },
-    { email: "inspector@inspecciones.local", name: "Carlos Ramírez", jobTitle: "Inspector SST", roles: ["INSPECTOR"], processes: ["SEG"] },
+    { email: "inspector@inspecciones.local", name: "Carlos Ramírez", jobTitle: "Brigadista", roles: ["INSPECTOR"], processes: ["SEG"] },
     {
       email: "responsable@inspecciones.local",
       name: "María Gómez",
@@ -296,23 +296,23 @@ async function seedDemo() {
     name: string;
     process: string;
     site: string;
-    area: string;
+    zone: string;
     location: string;
     responsible: string;
     last: string | null;
     status?: "ACTIVE" | "MAINTENANCE";
   }[] = [
-    { code: "EXT-023", type: "EXT", name: "Extintor ABC 20 lb", process: "PROD", site: principal.id, area: "BOD", location: "Columna B4, junto a estantería 3", responsible: "responsable", last: "2026-09-01" },
-    { code: "EXT-001", type: "EXT", name: "Extintor ABC 10 lb", process: "ADM", site: principal.id, area: "OFI", location: "Pasillo principal piso 2", responsible: "admin", last: "2026-08-28" },
-    { code: "EXT-002", type: "EXT", name: "Extintor CO2 15 lb", process: "PROD", site: principal.id, area: "PLA", location: "Tablero eléctrico línea 1", responsible: "responsable", last: "2026-09-10" },
-    { code: "EXT-003", type: "EXT", name: "Extintor ABC 20 lb", process: "MANT", site: principal.id, area: "PLA", location: "Taller de mantenimiento", responsible: "accion", last: "2026-07-15" },
-    { code: "EXT-004", type: "EXT", name: "Extintor Solkaflam 3700 g", process: "ADM", site: norte.id, area: "REC", location: "Recepción, detrás del counter", responsible: "admin", last: "2026-09-20" },
-    { code: "EXT-005", type: "EXT", name: "Extintor ABC 30 lb satelital", process: "SEG", site: norte.id, area: "PAR", location: "Entrada parqueadero", responsible: "admin", last: null },
-    { code: "BOT-001", type: "BOT", name: "Botiquín tipo A", process: "PROD", site: principal.id, area: "BOD", location: "Oficina de bodega", responsible: "responsable", last: "2026-09-05" },
-    { code: "BOT-002", type: "BOT", name: "Botiquín tipo B", process: "ADM", site: principal.id, area: "OFI", location: "Cocineta piso 2", responsible: "admin", last: "2026-08-20" },
-    { code: "BOT-003", type: "BOT", name: "Botiquín tipo A", process: "SEG", site: norte.id, area: "REC", location: "Recepción", responsible: "admin", last: "2026-09-18" },
-    { code: "CAM-001", type: "CAM", name: "Camilla rígida con inmovilizadores", process: "SEG", site: principal.id, area: "PLA", location: "Punto de encuentro planta", responsible: "admin", last: "2026-07-01" },
-    { code: "CAM-002", type: "CAM", name: "Camilla rígida", process: "SEG", site: norte.id, area: "REC", location: "Cuarto de brigada", responsible: "admin", last: "2026-06-15", status: "MAINTENANCE" },
+    { code: "EXT-023", type: "EXT", name: "Extintor ABC 20 lb", process: "PROD", site: principal.id, zone: "BOD", location: "Columna B4, junto a estantería 3", responsible: "responsable", last: "2026-09-01" },
+    { code: "EXT-001", type: "EXT", name: "Extintor ABC 10 lb", process: "ADM", site: principal.id, zone: "OFI", location: "Pasillo principal piso 2", responsible: "admin", last: "2026-08-28" },
+    { code: "EXT-002", type: "EXT", name: "Extintor CO2 15 lb", process: "PROD", site: principal.id, zone: "PLA", location: "Tablero eléctrico línea 1", responsible: "responsable", last: "2026-09-10" },
+    { code: "EXT-003", type: "EXT", name: "Extintor ABC 20 lb", process: "MANT", site: principal.id, zone: "PLA", location: "Taller de mantenimiento", responsible: "accion", last: "2026-07-15" },
+    { code: "EXT-004", type: "EXT", name: "Extintor Solkaflam 3700 g", process: "ADM", site: norte.id, zone: "REC", location: "Recepción, detrás del counter", responsible: "admin", last: "2026-09-20" },
+    { code: "EXT-005", type: "EXT", name: "Extintor ABC 30 lb satelital", process: "SEG", site: norte.id, zone: "PAR", location: "Entrada parqueadero", responsible: "admin", last: null },
+    { code: "BOT-001", type: "BOT", name: "Botiquín tipo A", process: "PROD", site: principal.id, zone: "BOD", location: "Oficina de bodega", responsible: "responsable", last: "2026-09-05" },
+    { code: "BOT-002", type: "BOT", name: "Botiquín tipo B", process: "ADM", site: principal.id, zone: "OFI", location: "Cocineta piso 2", responsible: "admin", last: "2026-08-20" },
+    { code: "BOT-003", type: "BOT", name: "Botiquín tipo A", process: "SEG", site: norte.id, zone: "REC", location: "Recepción", responsible: "admin", last: "2026-09-18" },
+    { code: "CAM-001", type: "CAM", name: "Camilla rígida con inmovilizadores", process: "SEG", site: principal.id, zone: "PLA", location: "Punto de encuentro planta", responsible: "admin", last: "2026-07-01" },
+    { code: "CAM-002", type: "CAM", name: "Camilla rígida", process: "SEG", site: norte.id, zone: "REC", location: "Cuarto de brigada", responsible: "admin", last: "2026-06-15", status: "MAINTENANCE" },
   ];
   const elements: Record<string, { id: string; processId: string; siteId: string; type: string }> = {};
   for (const e of elementDefs) {
@@ -326,7 +326,7 @@ async function seedDemo() {
         name: e.name,
         processId: processes[e.process]!,
         siteId: e.site,
-        areaId: areas[e.area],
+        zoneId: zones[e.zone],
         location: e.location,
         responsibleId: users[e.responsible],
         frequency: typeDef.frequency,
@@ -515,7 +515,7 @@ async function seedDemo() {
   ]);
 
   console.log(
-    `✔ Demostración: ${Object.keys(processes).length} procesos, 2 sedes, ${areaDefs.length} áreas, ${userDefs.length} usuarios, ` +
+    `✔ Demostración: ${Object.keys(processes).length} procesos, 2 sedes, ${zoneDefs.length} zonas, ${userDefs.length} usuarios, ` +
       `${ELEMENT_TYPES.length} tipos, ${elementDefs.length} elementos, inspecciones, hallazgos y planes`,
   );
   console.log(`  Usuarios de prueba (contraseña: ${DEFAULT_PASSWORD}):`);

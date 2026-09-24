@@ -1,5 +1,6 @@
 import {
   Boxes,
+  ClipboardCheck,
   Building2,
   KeyRound,
   LayoutDashboard,
@@ -34,6 +35,13 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, mobile: true },
       {
+        href: "/inspections",
+        label: "Inspecciones",
+        icon: ClipboardCheck,
+        anyOf: ["inspections.perform", "inspections.read.all", "inspections.read.process", "inspections.read.own"],
+        mobile: true,
+      },
+      {
         href: "/inventory",
         label: "Inventario",
         icon: Boxes,
@@ -54,7 +62,7 @@ export const NAVIGATION: NavSection[] = [
       { href: "/admin/users", label: "Usuarios", icon: Users, anyOf: ["users.read", "users.manage"] },
       { href: "/admin/roles", label: "Roles y permisos", icon: KeyRound, anyOf: ["roles.manage"] },
       { href: "/admin/processes", label: "Procesos", icon: Network, anyOf: ["processes.manage"] },
-      { href: "/admin/sites", label: "Sedes y áreas", icon: Building2, anyOf: ["sites.manage"] },
+      { href: "/admin/sites", label: "Sedes y zonas", icon: Building2, anyOf: ["sites.manage"] },
     ],
   },
 ];
