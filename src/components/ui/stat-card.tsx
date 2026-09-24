@@ -32,8 +32,8 @@ export function StatCard({
       </span>
       <div className="min-w-0">
         <p className="text-2xl font-semibold leading-tight tabular-nums">{value}</p>
-        <p className="truncate text-sm text-subtle">{label}</p>
-        {hint && <p className="truncate text-xs text-subtle">{hint}</p>}
+        <p className="text-sm leading-snug text-subtle">{label}</p>
+        {hint && <p className="text-xs leading-snug text-subtle">{hint}</p>}
       </div>
     </div>
   );

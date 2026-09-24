@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fase 4 (Hallazgos y planes de acción).
+> Última actualización: Fase 5 (Dashboard gerencial). Guía de implementación: [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 ---
 
@@ -264,8 +264,8 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ✅ |
 | 3 Inspecciones | Mis inspecciones por zona, formulario dinámico móvil, autoguardado, hallazgos en línea, fotos (S3), finalización, resultado y reprogramación | ✅ |
 | 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre, hallazgos automáticos por vencimiento | ✅ |
-| 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | ⏭ |
-| 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
+| 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | ✅ |
+| 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | ⏭ |
 | 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | |
 | 8 Reportes | Reportes filtrables, exportación CSV/Excel y PDF | |
 | 9 Endurecimiento | Visor de auditoría, E2E, rate limit distribuido, optimización, checklist de producción | |
@@ -407,6 +407,31 @@ botones subir/bajar (accesibles y usables en móvil).
   varias réplicas).
 - Al marcar como solucionado un plan de vencimiento se exige la **nueva fecha
   de vencimiento**, que se guarda en el elemento y apaga la alerta.
+
+## Dashboard gerencial (Fase 5)
+
+- Ruta `/indicators` (permiso `dashboard.view`). Gerencia ve todo; el
+  responsable de proceso ve solo sus procesos (el alcance se aplica en las
+  consultas, también en las opciones de los filtros).
+- **Filtros en una fila** sobre todo el tablero (formulario GET, URL
+  compartible): periodo (atajos: este mes, 90 días, este año, 12 meses) +
+  proceso, sede, tipo de elemento, responsable y estado. Todos los números de
+  la página usan el mismo corte.
+- **Fórmulas** (`src/lib/indicators.ts`, con pruebas):
+  - Cumplimiento del programa = realizadas ÷ (realizadas + pendientes + vencidas)
+    (ej. 180/15/5 → 90 %). Pendientes y vencidas son el estado actual.
+  - Cumplimiento promedio = promedio del % de las inspecciones del periodo.
+  - Inspecciones sin novedad = % con resultado "Cumple".
+  - Por proceso / sede se usa el proceso y la sede guardados en la inspección
+    (snapshot), así el histórico no cambia si un elemento se traslada.
+- **Gráficos** propios en SVG (sin librerías): una métrica por gráfico (nunca
+  doble eje), marcas delgadas, rejilla hairline, tooltip al pasar o tocar,
+  navegación con teclado, "Ver tabla" en cada gráfico y paleta validada para
+  daltonismo. Las barras enlazan al listado filtrado.
+- Escala: las series se agregan en el servidor a partir de las filas del
+  periodo; suficiente para decenas de miles de inspecciones al año. Si crece
+  más, se reemplaza por agregaciones SQL (`date_trunc`) o vistas materializadas
+  sin cambiar la interfaz del servicio.
 
 ## Estrategia de archivos
 

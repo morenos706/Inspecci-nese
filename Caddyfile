@@ -1,0 +1,9 @@
+# HTTPS automático para el dominio definido en DOMAIN (.env.production).
+{$DOMAIN} {
+	encode zstd gzip
+	# Tamaño máximo de subida (fotos comprimidas; PDF de evidencias)
+	request_body {
+		max_size 15MB
+	}
+	reverse_proxy app:3000
+}

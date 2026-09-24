@@ -46,3 +46,5 @@ next-env.d.ts
 
 # archivos subidos en desarrollo (STORAGE_DRIVER=local)
 /.storage/
+!.env.production.example
+/backups/

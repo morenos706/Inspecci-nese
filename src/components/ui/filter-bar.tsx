@@ -29,7 +29,12 @@ export function FilterBar({
 }) {
   const active = Boolean(q) || selects.some((s) => s.value);
   return (
-    <form role="search" method="get" className="space-y-2 border-b border-border p-4">
+    <form
+      key={JSON.stringify([q, selects.map((s) => s.value), hidden])}
+      role="search"
+      method="get"
+      className="space-y-2 border-b border-border p-4"
+    >
       {Object.entries(hidden).map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" aria-hidden />

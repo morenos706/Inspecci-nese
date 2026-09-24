@@ -440,6 +440,9 @@ async function seedDemo() {
       const q = type.questions[f.question]!;
       const answer = inspection.answers.find((a) => a.questionId === q.id)!;
       const closedLike = ["SOLVED", "VERIFIED", "CLOSED"].includes(f.planStatus);
+      const closed = f.status === "CLOSED";
+      // Hallazgos históricos cerrados: se solucionan antes de la fecha límite, los cierra el administrador.
+      const closedAt = closed ? new Date(d(f.due).getTime() - 2 * 86_400_000) : null;
       const finding = await db.finding.create({
         data: {
           inspectionId: inspection.id,
@@ -456,6 +459,9 @@ async function seedDemo() {
           status: f.status,
           createdById: users.inspector!,
           createdAt: when,
+          ...(closed
+            ? { solvedAt: closedAt, verifiedAt: closedAt, verifiedById: users.admin, closedAt, closedById: users.admin }
+            : {}),
         },
       });
       const plan = await db.actionPlan.create({
@@ -467,7 +473,9 @@ async function seedDemo() {
           status: f.planStatus,
           createdById: users.responsable!,
           createdAt: when,
-          solvedAt: closedLike ? new Date() : null,
+          solvedAt: closedLike ? (closedAt ?? new Date()) : null,
+          solvedById: closedLike ? users[f.responsible] : null,
+          ...(closed ? { verifiedAt: closedAt, verifiedById: users.admin, closedAt, closedById: users.admin } : {}),
         },
       });
       await db.actionPlanEvent.create({
@@ -483,6 +491,52 @@ async function seedDemo() {
             comment: "Se inició la gestión de la acción.",
           },
         });
+      }
+    }
+  }
+
+  // Historial de 11 meses (oct 2025 – ago 2026) para que el dashboard muestre
+  // tendencias. Patrón determinista: ~1 de cada 7 inspecciones tiene una
+  // no conformidad, cuyo hallazgo y plan quedaron cerrados.
+  const history: [string, string[]][] = [
+    ["monthly", ["EXT-023", "EXT-001", "EXT-002", "EXT-003", "EXT-004", "BOT-001", "BOT-002", "BOT-003"]],
+    ["quarterly", ["CAM-001", "CAM-002"]],
+  ];
+  const months = ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"];
+  let seq = 0;
+  for (const [freq, codes] of history) {
+    for (const [mi, month] of months.entries()) {
+      if (freq === "quarterly" && mi % 3 !== 0) continue;
+      for (const [ci, code] of codes.entries()) {
+        // Algunos meses se omite la inspección (programa incompleto)
+        if ((mi + ci) % 9 === 4) continue;
+        seq++;
+        const day = String(3 + ((ci * 3 + mi) % 20)).padStart(2, "0");
+        const date = `${month}-${day}`;
+        if (month === "2026-08" && ["EXT-001"].includes(code)) continue; // ya tiene su inspección del 28/08
+        const bad = seq % 7 === 0;
+        const qIndex = elements[code]!.type === "CAM" ? 0 : 1;
+        const due = new Date(`${date}T12:00:00Z`);
+        due.setUTCDate(due.getUTCDate() + 10);
+        await inspect(
+          code,
+          date,
+          bad ? { [qIndex]: "NO" } : {},
+          bad
+            ? [
+                {
+                  question: qIndex,
+                  description: "No conformidad detectada en la inspección de rutina.",
+                  action: "Corregir la condición y dejar registro fotográfico.",
+                  priority: seq % 2 ? "MEDIUM" : "HIGH",
+                  responsible: elements[code]!.type === "BOT" ? "responsable" : "accion",
+                  due: due.toISOString().slice(0, 10),
+                  status: "CLOSED",
+                  planStatus: "CLOSED",
+                },
+              ]
+            : [],
+        );
       }
     }
   }

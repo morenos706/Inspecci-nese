@@ -5,6 +5,7 @@ extintores, botiquines, camillas y cualquier elemento de emergencia
 configurable: inventario, inspecciones dinámicas, hallazgos, planes de acción,
 evidencias, QR, indicadores y reportes.
 
+- **Cómo implementarlo (local, servidor con HTTPS y puesta en marcha): [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**
 - Arquitectura, modelo de datos, permisos y roadmap: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Stack: Next.js 16 · React 19 · TypeScript · Tailwind 4 · Prisma 7 · PostgreSQL 16 · Zod 4 · Vitest
 
@@ -46,6 +47,13 @@ verificar, rechazo con motivo, reasignación, planes adicionales, historial y
 cierre automático del hallazgo. **Vencimientos → hallazgo crítico + plan de
 acción automático** asignado al responsable del elemento; al solucionarlo se
 registra la nueva fecha de vencimiento.
+
+**Fase 5 — Dashboard gerencial ✅**: cumplimiento del programa de inspecciones,
+cumplimiento promedio, hallazgos abiertos y críticos, planes vencidos,
+vencimientos expirados, tendencia mensual (inspecciones, cumplimiento,
+hallazgos registrados vs. cerrados), hallazgos por prioridad, planes por estado
+y cumplimiento por proceso y por sede, con filtros por periodo, proceso, sede,
+tipo, responsable y estado. El seed incluye 12 meses de historial.
 
 ## Requisitos
 
@@ -180,6 +188,15 @@ http://localhost:9001, usuario y clave `minioadmin`). Sin Docker usa
    motivo y el plan vuelve a "En proceso".
 5. Cron externo (opcional): `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/run`.
 
+## Cómo probar la Fase 5
+
+1. Ingresa como `gerencia@inspecciones.local` → **Indicadores**.
+2. Pasa el cursor (o toca en el celular) sobre las columnas y las líneas para
+   ver los valores; abre **Ver tabla** en cualquier gráfico.
+3. Usa los atajos de periodo y los filtros (p. ej. Proceso = Producción): todo
+   el tablero se recalcula con el mismo corte.
+4. Ingresa como `responsable@inspecciones.local`: solo verás su proceso.
+
 ## Entornos y despliegue
 
 - `APP_ENV` (`development` | `staging` | `production`) define el entorno lógico;
@@ -193,8 +210,8 @@ docker build -t inspecciones:latest .
 # Imagen del job de migraciones + sincronización de permisos
 docker build --target migrate -t inspecciones-migrate:latest .
 
-# Todo en un host (ejemplo): postgres + migrate + app
-cp .env.example .env.production   # completar valores reales
+# Todo en un servidor: postgres + MinIO + migraciones + app + Caddy (HTTPS automático)
+cp .env.production.example .env.production   # completar valores reales
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 

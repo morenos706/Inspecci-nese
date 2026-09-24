@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertOctagon, BatteryWarning, Boxes, ClipboardList, Flame, ShieldCheck, Timer, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
-import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { getReadScope, hasPermission, requirePageUser } from "@/server/auth/current-user";
@@ -94,11 +94,11 @@ export default async function DashboardPage() {
 
       {hasPermission(user, "dashboard.view") && (
         <Card>
-          <CardHeader title="Indicadores de hallazgos y cumplimiento" description="Disponible en la Fase 5 del proyecto." />
-          <CardBody className="text-sm text-subtle">
-            Aquí se mostrarán inspecciones realizadas, hallazgos abiertos y críticos, planes de acción, cumplimiento por
-            proceso y sede y la tendencia mensual.
-          </CardBody>
+          <CardHeader
+            title="Dashboard gerencial"
+            description="Cumplimiento por proceso y sede, hallazgos, planes de acción y tendencia mensual, con filtros."
+            actions={<ButtonLink href="/indicators">Ver indicadores</ButtonLink>}
+          />
         </Card>
       )}
     </>

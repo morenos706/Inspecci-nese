@@ -32,6 +32,13 @@
   --color-danger-soft: #fee2e2;
   --color-info: #0369a1;
   --color-info-soft: #e0f2fe;
+
+  /* Visualización de datos (paleta validada para daltonismo sobre superficie blanca) */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-chart-grid: #e1e0d9;
+  --color-chart-axis: #c3c2b7;
+  --color-chart-muted: #898781;
 }
 
 html {

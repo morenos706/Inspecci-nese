@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Boxes,
   ClipboardCheck,
   ListTodo,
@@ -36,6 +37,7 @@ export const NAVIGATION: NavSection[] = [
   {
     items: [
       { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, mobile: true },
+      { href: "/indicators", label: "Indicadores", icon: BarChart3, anyOf: ["dashboard.view"], mobile: true },
       {
         href: "/inspections",
         label: "Inspecciones",
