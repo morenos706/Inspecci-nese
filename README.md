@@ -58,7 +58,7 @@ tipo, responsable y estado. El seed incluye 12 meses de historial.
 ## Requisitos
 
 - Node.js ≥ 20.9 (recomendado 22)
-- Docker (para PostgreSQL, MinIO y Mailpit en local) o un PostgreSQL 14+ propio
+- Docker (para PostgreSQL y Mailpit en local) o un PostgreSQL 14+ propio
 
 ## Puesta en marcha local
 
@@ -69,7 +69,7 @@ npm install
 # 2. Variables de entorno
 cp .env.example .env
 
-# 3. Servicios de apoyo: PostgreSQL :5432, MinIO :9000/:9001, Mailpit :1025/:8025
+# 3. Servicios de apoyo: PostgreSQL :5432, Mailpit :1025/:8025
 docker compose up -d
 
 # 4. Base de datos: migraciones + seed (catálogo de permisos y datos de prueba)
@@ -170,9 +170,8 @@ planes de acción para probar las fases siguientes.
    `responsable@inspecciones.local` (Producción) verás la inspección y las
    fotos de su proceso.
 
-Fotos en local: con `docker compose up -d` se guardan en MinIO (consola
-http://localhost:9001, usuario y clave `minioadmin`). Sin Docker usa
-`STORAGE_DRIVER=local` y se guardan en `.storage/`.
+Fotos en local: se guardan en la carpeta `.storage/` (`STORAGE_DRIVER=local`).
+En un servidor van al volumen `uploads` o a Amazon S3 / Cloudflare R2.
 
 ## Cómo probar la Fase 4
 
@@ -210,7 +209,7 @@ docker build -t inspecciones:latest .
 # Imagen del job de migraciones + sincronización de permisos
 docker build --target migrate -t inspecciones-migrate:latest .
 
-# Todo en un servidor: postgres + MinIO + migraciones + app + Caddy (HTTPS automático)
+# Todo en un servidor: postgres + migraciones + app + Caddy (HTTPS automático)
 cp .env.production.example .env.production   # completar valores reales
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
@@ -225,7 +224,7 @@ PostgreSQL gestionado con backups, y un bucket S3/R2 privado.
 | `Configuración de entorno inválida` al arrancar | Falta una variable en `.env` (ver `.env.example`) |
 | `Cannot find module '@/generated/prisma/client'` | Ejecutar `npm run db:generate` |
 | `P1001 Can't reach database server` | PostgreSQL no está arriba: `docker compose up -d` |
-| Las fotos no suben | Revisa `STORAGE_DRIVER` y las variables `S3_*`; con MinIO el bucket `inspecciones` lo crea `minio-init`. Máximo `UPLOAD_MAX_MB` por foto |
+| Las fotos no suben | Revisa `STORAGE_DRIVER` (`local` o `s3`) y, con S3, las variables `S3_*` o el rol IAM. Máximo `UPLOAD_MAX_MB` por foto |
 | No llegan correos | Revisar Mailpit (http://localhost:8025) o dejar `SMTP_HOST=` para verlos en consola |
 | "Demasiados intentos" al iniciar sesión | Rate limit (5 intentos / 15 min por correo+IP). Reiniciar el servidor en desarrollo |
 | Cuenta bloqueada | 10 intentos fallidos bloquean 15 min; un admin puede desbloquear desde la ficha del usuario |

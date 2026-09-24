@@ -37,7 +37,7 @@ git checkout claude/emergency-inspections-app-3yxq4p   # rama con el desarrollo
 
 npm install                 # dependencias (1–3 min)
 cp .env.example .env        # configuración local (en Windows: copy .env.example .env)
-docker compose up -d        # PostgreSQL, MinIO (fotos) y Mailpit (correo de prueba)
+docker compose up -d        # PostgreSQL y Mailpit (correo de prueba)
 npm run db:deploy           # crea las tablas
 npm run db:seed             # permisos, roles y datos de demostración
 npm run dev                 # inicia la aplicación
@@ -47,7 +47,7 @@ Abre **http://localhost:3000** e ingresa con `admin@inspecciones.local` /
 `Cambiar123*`. Los demás usuarios de prueba están en el `README.md`.
 
 - Correos (recuperar contraseña, invitaciones): http://localhost:8025
-- Fotos subidas (MinIO): http://localhost:9001 (usuario y clave `minioadmin`)
+- Fotos subidas: carpeta `.storage/` del proyecto
 
 ### 1.3 Probarlo desde tu celular (misma red Wi-Fi)
 
@@ -150,7 +150,6 @@ Valores que **debes** cambiar:
 | `DOMAIN` / `APP_URL` | tu dominio (`inspecciones.miempresa.com` / `https://inspecciones.miempresa.com`) |
 | `POSTGRES_PASSWORD` | un secreto generado |
 | `AUTH_SECRET` | un secreto generado (mínimo 32 caracteres) |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | usuario y secreto para el almacenamiento de fotos |
 | `SMTP_*` / `MAIL_FROM` | datos del correo de la empresa (pídelos a TI) |
 | `SEED_ADMIN_EMAIL` / `SEED_DEFAULT_PASSWORD` | tu correo y una clave inicial (el sistema pedirá cambiarla) |
 
@@ -169,16 +168,21 @@ Abre `https://inspecciones.miempresa.com` e ingresa con `SEED_ADMIN_EMAIL`.
 
 ### 2.6 Copias de seguridad (obligatorio)
 
-Copia diaria de la base de datos a las 2 a.m., conservando 30 días:
+Copia diaria a las 2 a.m. de la base de datos y de las fotos (volumen
+`uploads`), conservando 30 días:
 
 ```bash
+mkdir -p ~/Inspecci-nese/backups
 crontab -e
-# agrega esta línea (ajusta la ruta del proyecto):
-0 2 * * * cd /home/usuario/Inspecci-nese && docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U inspecciones -Fc inspecciones > backups/db-$(date +\%F).dump && find backups -name "db-*.dump" -mtime +30 -delete
+# agrega estas dos líneas (ajusta la ruta del proyecto):
+0 2 * * * cd /home/ubuntu/Inspecci-nese && docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U inspecciones -Fc inspecciones > backups/db-$(date +\%F).dump && find backups -name "db-*.dump" -mtime +30 -delete
+30 2 * * * cd /home/ubuntu/Inspecci-nese && docker run --rm -v inspecci-nese_uploads:/data:ro -v $PWD/backups:/b alpine tar czf /b/fotos-$(date +\%F).tgz -C /data . && find backups -name "fotos-*.tgz" -mtime +30 -delete
 ```
 
-Las fotos están en el volumen `miniodata`. Copia la carpeta `backups/` y ese
-volumen a otro lugar (otro servidor, S3, OneDrive…) al menos una vez por semana.
+(`docker volume ls` muestra el nombre exacto del volumen; normalmente
+`inspecci-nese_uploads`.) Copia la carpeta `backups/` a otro lugar (otro
+servidor, S3, OneDrive…) al menos una vez por semana. En AWS también puedes
+programar *snapshots* del disco EBS (EC2 → Data Lifecycle Manager).
 
 Restaurar una copia:
 
@@ -200,9 +204,13 @@ Las migraciones se aplican solas antes de iniciar la nueva versión.
 
 - **Base de datos gestionada** (AWS RDS, Azure Database for PostgreSQL, Neon):
   pon su `DATABASE_URL` en `.env.production` y quita el servicio `postgres`.
-- **Fotos en la nube** (AWS S3 o Cloudflare R2): crea un bucket **privado**,
-  configura `S3_ENDPOINT` (vacío para AWS; `https://<cuenta>.r2.cloudflarestorage.com`
-  para R2), `S3_REGION`, `S3_BUCKET` y las llaves; quita `minio` y `minio-init`.
+- **Fotos en Amazon S3** (en vez del volumen del servidor): crea un bucket
+  **privado** en la misma región; en IAM crea un **rol para EC2** con permiso
+  `s3:PutObject`, `s3:GetObject` y `s3:DeleteObject` solo sobre ese bucket y
+  asígnalo a la instancia (*Acciones → Seguridad → Modificar rol de IAM*). En
+  `.env.production`: `STORAGE_DRIVER=s3`, `S3_REGION`, `S3_BUCKET`,
+  `S3_FORCE_PATH_STYLE=false` y **sin llaves** (se usa el rol). Para Cloudflare
+  R2: `S3_ENDPOINT=https://<cuenta>.r2.cloudflarestorage.com` y sus llaves.
 - **Varios servidores**: pon `INTERNAL_SCHEDULER=false`, define `CRON_SECRET` y
   programa cada hora `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://tu-dominio/api/cron/run`.
 
@@ -258,6 +266,8 @@ celular pedirá permiso para usar la cámara: deben **permitirlo**.
 
 | Síntoma | Solución |
 |---|---|
+| `pull access denied for minio/mc` al arrancar | Versión anterior del proyecto (MinIO dejó de publicar sus imágenes). Ejecuta `git pull` y vuelve a `docker compose -f docker-compose.prod.yml up -d --build`; las fotos ahora van en el volumen `uploads` o en S3 |
+| `permission denied ... docker.sock` | Tu sesión aún no tiene el grupo `docker`: ejecuta `newgrp docker` o sal y vuelve a entrar |
 | AWS: *Failed to connect to your instance* al usar **EC2 Instance Connect** | Instance Connect entra desde servidores de AWS, no desde tu IP. En la instancia → pestaña **Seguridad** → grupo de seguridad → **Editar reglas de entrada** → **Agregar regla**: Tipo *SSH*, Origen *Personalizado* → lista de prefijos `com.amazonaws.us-east-2.ec2-instance-connect` (cambia la región si no es Ohio) → Guardar. Verifica también que la instancia esté *En ejecución* con *2/2 comprobaciones superadas* y tenga IP pública |
 | AWS: `ssh` desde tu computador se queda esperando | Tu IP cambió (internet residencial/móvil): edita la regla SSH y vuelve a elegir **Mi IP**. Usuario: `ubuntu` (Ubuntu) o `ec2-user` (Amazon Linux) |
 | El sitio no abre con HTTPS | Revisa que el registro DNS apunte a la IP y que los puertos 80/443 estén abiertos; mira `docker compose -f docker-compose.prod.yml logs caddy` |

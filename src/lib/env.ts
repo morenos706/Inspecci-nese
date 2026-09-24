@@ -23,8 +23,8 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
   MAIL_FROM: z.string().default("Inspecciones <no-reply@inspecciones.local>"),
 
-  // s3: AWS S3 / Cloudflare R2 / MinIO · local: disco (solo desarrollo)
-  STORAGE_DRIVER: z.enum(["s3", "local"]).default("s3"),
+  // local: disco / volumen del servidor (una instancia) · s3: AWS S3 / Cloudflare R2 / otro S3-compatible
+  STORAGE_DRIVER: z.enum(["s3", "local"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default(".storage"),
   S3_ENDPOINT: z.string().optional().default(""),
   S3_REGION: z.string().default("us-east-1"),
@@ -52,8 +52,10 @@ function loadEnv(): Env {
   if (parsed.data.APP_ENV === "production" && parsed.data.AUTH_SECRET.startsWith("change-me")) {
     throw new Error("AUTH_SECRET no puede usar el valor de ejemplo en producción");
   }
-  if (parsed.data.STORAGE_DRIVER === "s3" && (!parsed.data.S3_ACCESS_KEY_ID || !parsed.data.S3_SECRET_ACCESS_KEY)) {
-    throw new Error("STORAGE_DRIVER=s3 requiere S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY");
+  // Con S3 las llaves son opcionales: sin ellas se usa la cadena de credenciales
+  // de AWS (p.ej. el rol IAM de la instancia EC2). Si se da una, se exigen ambas.
+  if (parsed.data.STORAGE_DRIVER === "s3" && Boolean(parsed.data.S3_ACCESS_KEY_ID) !== Boolean(parsed.data.S3_SECRET_ACCESS_KEY)) {
+    throw new Error("S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY deben definirse juntas (o ninguna para usar el rol IAM)");
   }
   return parsed.data;
 }

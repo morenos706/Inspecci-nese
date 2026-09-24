@@ -6,8 +6,9 @@ import { Readable } from "node:stream";
 import type { StorageProvider } from "@/server/storage/types";
 
 /**
- * Almacenamiento en disco para DESARROLLO sin Docker. No usar en producción
- * con varias réplicas (el disco no es compartido).
+ * Almacenamiento en disco (en Docker: un volumen persistente). Adecuado para
+ * una sola instancia; con varias réplicas usar S3 (el disco no es compartido).
+ * Respaldar el directorio / volumen junto con la base de datos.
  */
 export function createLocalStorage(rootDir: string): StorageProvider {
   const root = path.resolve(rootDir);

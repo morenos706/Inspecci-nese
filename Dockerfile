@@ -42,6 +42,9 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
+# Directorio de fotos/documentos (STORAGE_DRIVER=local). Un volumen con nombre
+# montado aquí hereda el dueño "node" la primera vez.
+RUN mkdir -p /app/storage && chown node:node /app/storage
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

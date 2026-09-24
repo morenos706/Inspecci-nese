@@ -26,7 +26,7 @@ servicios más adelante si el volumen lo exige.
                 │ Prisma (driver adapter pg)  │ S3 API (URLs firmadas)   │ SMTP / canales
           ┌─────▼─────┐                 ┌─────▼─────┐             ┌──────▼──────┐
           │PostgreSQL │                 │ S3 / R2 / │             │ Correo, luego│
-          │           │                 │  MinIO    │             │ WhatsApp/SMS │
+          │           │                 │  o disco  │             │ WhatsApp/SMS │
           └───────────┘                 └───────────┘             └─────────────┘
 ```
 
@@ -70,7 +70,7 @@ worker si en el futuro aparece una app nativa o integraciones pesadas.
 | ORM | **Prisma 7** + `@prisma/adapter-pg` | Migraciones versionadas, consultas tipadas y parametrizadas |
 | BD | **PostgreSQL 16** | Relacional, JSONB para respuestas dinámicas |
 | Auth | Sesiones propias en BD + bcrypt | Revocables, sin dependencias externas, control total |
-| Archivos | API S3 (`@aws-sdk/client-s3`, Fase 3) con URLs firmadas | AWS S3, Cloudflare R2, MinIO sin cambiar código |
+| Archivos | Disco/volumen o API S3 (`@aws-sdk/client-s3`) servidos a través de la app | Volumen local, AWS S3 o Cloudflare R2 sin cambiar código |
 | Correo | Nodemailer (SMTP) · Mailpit en local | Cualquier proveedor SMTP |
 | Pruebas | **Vitest** (unitarias), **Playwright** (E2E) | Rápidas; Chromium ya disponible |
 | Infra | Docker multi-etapa, docker compose, variables de entorno | development / staging / production |
@@ -442,7 +442,7 @@ directa al bucket planteada inicialmente, esto permite:
 
 - Validar el **tipo real por contenido** (magic bytes: JPEG/PNG/WEBP/PDF), no
   por extensión ni por el MIME declarado.
-- No depender de configurar CORS en el bucket (S3/R2/MinIO).
+- No depender de configurar CORS en el bucket (S3/R2).
 - Mantener el bucket **privado**: `GET /api/evidences/{id}` verifica permisos
   (quien subió, o alcance sobre la inspección / hallazgo / plan / elemento) y
   transmite el archivo con `nosniff` y CSP restrictiva.
@@ -450,8 +450,8 @@ directa al bucket planteada inicialmente, esto permite:
 Otras reglas: tamaño máximo `UPLOAD_MAX_MB`, máximo 10 archivos por respuesta o
 hallazgo, clave generada por el servidor (`inspections/{aaaa}/{mm}/{uuid}.jpg`),
 checksum SHA-256, verificación de `Origin` (CSRF) en la subida y borrado
-lógico. Proveedores: `STORAGE_DRIVER=s3` (AWS S3, Cloudflare R2, MinIO) o
-`local` (disco, solo desarrollo). Si el volumen de archivos crece mucho, se
+lógico. Proveedores: `STORAGE_DRIVER=s3` (AWS S3 con rol IAM o llaves, Cloudflare R2) o
+`local` (disco o volumen Docker, una sola instancia). Si el volumen de archivos crece mucho, se
 puede pasar a URL firmada directa conservando la validación al confirmar.
 
 ## Estrategia de notificaciones (Fase 7)
