@@ -157,6 +157,8 @@ Valores que **debes** cambiar:
 ### 2.5 Arrancar
 
 ```bash
+# Acceso directo: así docker compose lee .env.production en TODOS los comandos (ps, logs, up…)
+ln -sf .env.production .env
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 docker compose -f docker-compose.prod.yml logs -f app      # ver que inició (Ctrl+C para salir)
 ```
@@ -264,3 +266,4 @@ celular pedirá permiso para usar la cámara: deben **permitirlo**.
 | No se pueden tomar fotos | La cámara exige HTTPS y el permiso de cámara en el navegador del celular |
 | No inicia la sesión tras actualizar | Borra las cookies del sitio; las sesiones se conservan en la base de datos |
 | Ver el estado de los servicios | `docker compose -f docker-compose.prod.yml ps` |
+| `required variable ... is missing a value` al ejecutar `ps` o `logs` | Compose busca las variables en `.env`: crea el acceso directo `ln -sf .env.production .env` (o agrega `--env-file .env.production` a cada comando) |

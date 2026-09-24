@@ -2,7 +2,8 @@
 #   PostgreSQL + MinIO (fotos) + migraciones + aplicación + Caddy (HTTPS automático)
 #
 #   cp .env.production.example .env.production   # completar valores reales
-#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#   ln -sf .env.production .env                    # compose lee las variables de .env
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Guía paso a paso: docs/DESPLIEGUE.md
 services:
