@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/*
+ * Tokens de diseño. Los componentes usan clases semánticas (bg-surface,
+ * text-muted, bg-primary…) para poder ajustar la marca desde un solo lugar.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-background: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-foreground: #0f172a;
+  --color-muted: #475569;
+  --color-subtle: #64748b;
+
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-soft: #dbeafe;
+  --color-primary-foreground: #ffffff;
+
+  --color-brand: #b91c1c;
+
+  --color-success: #15803d;
+  --color-success-soft: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #b91c1c;
+  --color-danger-hover: #991b1b;
+  --color-danger-soft: #fee2e2;
+  --color-info: #0369a1;
+  --color-info-soft: #e0f2fe;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Foco visible y consistente para navegación con teclado. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Respeta la zona segura en móviles con notch (PWA a pantalla completa). */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+dialog::backdrop {
+  background: rgb(15 23 42 / 0.5);
+}

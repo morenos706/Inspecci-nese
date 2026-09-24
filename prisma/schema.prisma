@@ -1,0 +1,731 @@
+// =============================================================================
+// Inspecciones de Emergencia — Modelo de datos
+//
+// Convenciones:
+//  - IDs: cuid (texto, no secuenciales → no enumerables desde URLs/QR).
+//  - `number` autoincremental en entidades que el usuario cita (#000125).
+//  - Datos maestros: borrado lógico con `deletedAt` + `active` para
+//    activar/desactivar. Nunca se borran físicamente si tienen historial.
+//  - Datos históricos (inspecciones, respuestas, hallazgos, planes, auditoría)
+//    no se borran: se cancelan / cambian de estado.
+//  - Las respuestas guardan una "foto" (snapshot) de la pregunta para que el
+//    historial no cambie cuando el administrador edita las preguntas.
+//  - Tablas en snake_case (@@map) para facilitar SQL/BI directo.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum InspectionFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  CUSTOM
+}
+
+enum ElementStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum ResponseType {
+  YES_NO
+  COMPLIES
+  YES_NO_NA
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  MULTI_SELECT
+  PHOTO
+}
+
+enum TemplateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum InspectionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InspectionResult {
+  COMPLIANT
+  NON_COMPLIANT
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum WorkflowStatus {
+  PENDING
+  IN_PROGRESS
+  SOLVED
+  VERIFIED
+  CLOSED
+}
+
+enum EvidenceKind {
+  PHOTO
+  DOCUMENT
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+  PUSH
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// -----------------------------------------------------------------------------
+// Identidad, sesiones y control de acceso
+// -----------------------------------------------------------------------------
+
+model User {
+  id               String    @id @default(cuid())
+  name             String
+  email            String    @unique // siempre en minúsculas (normalizado en la capa de servicio)
+  passwordHash     String
+  phone            String?
+  jobTitle         String?
+  active           Boolean   @default(true)
+  mustChangePassword Boolean @default(false)
+  lastLoginAt      DateTime?
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  roles               UserRole[]
+  processes           UserProcess[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+
+  responsibleElements   Element[]      @relation("ElementResponsible")
+  inspections           Inspection[]   @relation("InspectionInspector")
+  findingsResponsible   Finding[]      @relation("FindingResponsible")
+  findingsCreated       Finding[]      @relation("FindingCreatedBy")
+  findingsVerified      Finding[]      @relation("FindingVerifiedBy")
+  findingsClosed        Finding[]      @relation("FindingClosedBy")
+  actionPlansResponsible ActionPlan[]  @relation("ActionPlanResponsible")
+  actionPlansCreated    ActionPlan[]   @relation("ActionPlanCreatedBy")
+  actionPlansVerified   ActionPlan[]   @relation("ActionPlanVerifiedBy")
+  actionPlansClosed     ActionPlan[]   @relation("ActionPlanClosedBy")
+  actionPlanEvents      ActionPlanEvent[]
+  evidences             Evidence[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  settingsUpdated       SystemSetting[]
+
+  @@index([active, deletedAt])
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  // Se guarda el SHA-256 del token; el token en claro solo vive en la cookie.
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  ipAddress  String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique // ADMIN, INSPECTOR, PROCESS_OWNER, ACTION_OWNER, VIEWER
+  name        String
+  description String?
+  // Los roles de sistema no se pueden eliminar ni renombrar su código.
+  isSystem    Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  code        String @unique // p.ej. "findings.read.all"
+  module      String // agrupación para la UI
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// Pertenencia de usuarios a procesos: define el alcance ("scope") de los
+// permisos *.process (p.ej. un responsable de proceso ve solo lo de su proceso).
+model UserProcess {
+  userId    String
+  processId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  process Process @relation(fields: [processId], references: [id], onDelete: Restrict)
+
+  @@id([userId, processId])
+  @@index([processId])
+  @@map("user_processes")
+}
+
+// -----------------------------------------------------------------------------
+// Estructura organizacional
+// -----------------------------------------------------------------------------
+
+model Process {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  users       UserProcess[]
+  elements    Element[]
+  inspections Inspection[]
+  findings    Finding[]
+
+  @@index([active, deletedAt])
+  @@map("processes")
+}
+
+model Site {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  address   String?
+  city      String?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  areas       Area[]
+  elements    Element[]
+  inspections Inspection[]
+  findings    Finding[]
+
+  @@index([active, deletedAt])
+  @@map("sites")
+}
+
+model Area {
+  id          String    @id @default(cuid())
+  siteId      String
+  code        String
+  name        String
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  elements Element[]
+
+  @@unique([siteId, code])
+  @@index([siteId, active])
+  @@map("areas")
+}
+
+// -----------------------------------------------------------------------------
+// Configuración de inspecciones (dinámica)
+// -----------------------------------------------------------------------------
+
+model ElementType {
+  id                   String              @id @default(cuid())
+  code                 String              @unique // EXT, BOT, CAM…
+  name                 String
+  description          String?
+  // Prefijo sugerido para el código de los elementos (EXT → EXT-023).
+  codePrefix           String?
+  icon                 String?
+  defaultFrequency     InspectionFrequency @default(MONTHLY)
+  defaultFrequencyDays Int? // solo si defaultFrequency = CUSTOM
+  active               Boolean             @default(true)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  deletedAt            DateTime?
+
+  templates InspectionTemplate[]
+  elements  Element[]
+
+  @@index([active, deletedAt])
+  @@map("element_types")
+}
+
+// Una plantilla agrupa las preguntas de un tipo de elemento. Se versiona para
+// permitir cambios mayores sin alterar inspecciones pasadas; en el MVP cada
+// tipo tiene una plantilla PUBLISHED activa.
+model InspectionTemplate {
+  id            String         @id @default(cuid())
+  elementTypeId String
+  version       Int            @default(1)
+  name          String
+  status        TemplateStatus @default(DRAFT)
+  publishedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  elementType ElementType          @relation(fields: [elementTypeId], references: [id], onDelete: Restrict)
+  questions   InspectionQuestion[]
+  inspections Inspection[]
+
+  @@unique([elementTypeId, version])
+  @@index([elementTypeId, status])
+  @@map("inspection_templates")
+}
+
+model InspectionQuestion {
+  id           String       @id @default(cuid())
+  templateId   String
+  text         String
+  helpText     String?
+  responseType ResponseType
+  required     Boolean      @default(true)
+  active       Boolean      @default(true)
+  order        Int
+  // Opciones para SELECT / MULTI_SELECT: [{ "value": "a", "label": "A" }]
+  options      Json?
+  // Regla de cumplimiento opcional (p.ej. { "nonCompliantValues": ["NO"] },
+  // { "min": 0, "max": 10 }). Si es null se usa la regla por defecto del tipo.
+  complianceRule Json?
+  // Si true, una respuesta "no cumple" propone crear un hallazgo automáticamente.
+  generatesFinding Boolean  @default(true)
+  defaultPriority  Priority @default(MEDIUM)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  template InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  answers  InspectionAnswer[]
+  findings Finding[]
+
+  @@index([templateId, active, order])
+  @@map("inspection_questions")
+}
+
+// -----------------------------------------------------------------------------
+// Inventario
+// -----------------------------------------------------------------------------
+
+model Element {
+  id                  String              @id @default(cuid())
+  code                String              @unique // EXT-023
+  // Identificador aleatorio y opaco para el QR (no revela datos ni el ID).
+  qrToken             String              @unique
+  elementTypeId       String
+  name                String
+  description         String?
+  processId           String
+  siteId              String
+  areaId              String?
+  location            String?
+  responsibleId       String?
+  frequency           InspectionFrequency
+  frequencyDays       Int? // solo si frequency = CUSTOM
+  lastInspectionAt    DateTime?
+  nextInspectionAt    DateTime?
+  status              ElementStatus       @default(ACTIVE)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+
+  elementType ElementType @relation(fields: [elementTypeId], references: [id], onDelete: Restrict)
+  process     Process     @relation(fields: [processId], references: [id], onDelete: Restrict)
+  site        Site        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  area        Area?       @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  responsible User?       @relation("ElementResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  inspections Inspection[]
+  findings    Finding[]
+  evidences   Evidence[]
+
+  @@index([elementTypeId])
+  @@index([processId, status])
+  @@index([siteId, status])
+  @@index([responsibleId])
+  @@index([nextInspectionAt])
+  @@map("elements")
+}
+
+// -----------------------------------------------------------------------------
+// Ejecución de inspecciones
+// -----------------------------------------------------------------------------
+
+model Inspection {
+  id          String           @id @default(cuid())
+  number      Int              @unique @default(autoincrement())
+  // UUID generado en el cliente → idempotencia para sincronización offline.
+  clientId    String?          @unique
+  elementId   String
+  templateId  String
+  inspectorId String
+  // Snapshot de ubicación organizacional al momento de inspeccionar
+  // (los indicadores históricos no cambian si el elemento se traslada).
+  processId   String
+  siteId      String
+  status      InspectionStatus @default(IN_PROGRESS)
+  result      InspectionResult?
+  dueDate     DateTime? // fecha programada que esta inspección atiende
+  startedAt   DateTime         @default(now())
+  completedAt DateTime?
+  totalQuestions     Int       @default(0)
+  answeredCount      Int       @default(0)
+  compliantCount     Int       @default(0)
+  nonCompliantCount  Int       @default(0)
+  compliancePct      Decimal?  @db.Decimal(5, 2)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  element   Element            @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  template  InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  inspector User               @relation("InspectionInspector", fields: [inspectorId], references: [id], onDelete: Restrict)
+  process   Process            @relation(fields: [processId], references: [id], onDelete: Restrict)
+  site      Site               @relation(fields: [siteId], references: [id], onDelete: Restrict)
+
+  answers   InspectionAnswer[]
+  findings  Finding[]
+  evidences Evidence[]
+
+  @@index([elementId, completedAt])
+  @@index([inspectorId, status])
+  @@index([processId, completedAt])
+  @@index([siteId, completedAt])
+  @@index([status, completedAt])
+  @@map("inspections")
+}
+
+model InspectionAnswer {
+  id           String       @id @default(cuid())
+  inspectionId String
+  questionId   String
+  // Snapshot de la pregunta
+  questionText String
+  responseType ResponseType
+  questionOrder Int
+  // Valor normalizado: "YES" | "NO" | "NA" | "COMPLIES" | "NOT_COMPLIES" |
+  // número | fecha ISO | string | string[]
+  value        Json?
+  isCompliant  Boolean? // null = no evaluable (texto, N/A…)
+  comment      String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  inspection Inspection         @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  question   InspectionQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  findings   Finding[]
+  evidences  Evidence[]
+
+  @@unique([inspectionId, questionId])
+  @@index([questionId])
+  @@map("inspection_answers")
+}
+
+// -----------------------------------------------------------------------------
+// Hallazgos y planes de acción
+// -----------------------------------------------------------------------------
+
+model Finding {
+  id             String         @id @default(cuid())
+  number         Int            @unique @default(autoincrement())
+  inspectionId   String?
+  answerId       String?
+  questionId     String?
+  elementId      String
+  processId      String
+  siteId         String
+  description    String
+  priority       Priority       @default(MEDIUM)
+  requiredAction String?
+  responsibleId  String?
+  dueDate        DateTime?
+  status         WorkflowStatus @default(PENDING)
+  observations   String?
+  createdById    String
+  solvedAt       DateTime?
+  verifiedAt     DateTime?
+  verifiedById   String?
+  closedAt       DateTime?
+  closedById     String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  inspection  Inspection?         @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  answer      InspectionAnswer?   @relation(fields: [answerId], references: [id], onDelete: Restrict)
+  question    InspectionQuestion? @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  element     Element             @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  process     Process             @relation(fields: [processId], references: [id], onDelete: Restrict)
+  site        Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  responsible User?               @relation("FindingResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  createdBy   User                @relation("FindingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedBy  User?               @relation("FindingVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  closedBy    User?               @relation("FindingClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+
+  actionPlans ActionPlan[]
+  evidences   Evidence[]
+
+  @@index([status, priority])
+  @@index([elementId])
+  @@index([inspectionId])
+  @@index([processId, status])
+  @@index([siteId, status])
+  @@index([responsibleId, status])
+  @@index([dueDate])
+  @@map("findings")
+}
+
+model ActionPlan {
+  id            String         @id @default(cuid())
+  number        Int            @unique @default(autoincrement())
+  findingId     String
+  action        String
+  responsibleId String
+  dueDate       DateTime
+  status        WorkflowStatus @default(PENDING)
+  observations  String?
+  createdById   String
+  solvedAt      DateTime?
+  verifiedAt    DateTime?
+  verifiedById  String?
+  closedAt      DateTime?
+  closedById    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  finding     Finding @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  responsible User    @relation("ActionPlanResponsible", fields: [responsibleId], references: [id], onDelete: Restrict)
+  createdBy   User    @relation("ActionPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedBy  User?   @relation("ActionPlanVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  closedBy    User?   @relation("ActionPlanClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+
+  events    ActionPlanEvent[]
+  evidences Evidence[]
+
+  @@index([findingId])
+  @@index([responsibleId, status])
+  @@index([status, dueDate])
+  @@map("action_plans")
+}
+
+// Bitácora de un plan: cambios de estado y observaciones (línea de tiempo).
+model ActionPlanEvent {
+  id           String          @id @default(cuid())
+  actionPlanId String
+  userId       String
+  fromStatus   WorkflowStatus?
+  toStatus     WorkflowStatus?
+  comment      String?
+  createdAt    DateTime        @default(now())
+
+  actionPlan ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([actionPlanId, createdAt])
+  @@map("action_plan_events")
+}
+
+// -----------------------------------------------------------------------------
+// Evidencias (archivos en almacenamiento S3-compatible)
+// Asociación polimórfica con FKs opcionales explícitas → integridad referencial.
+// -----------------------------------------------------------------------------
+
+model Evidence {
+  id           String       @id @default(cuid())
+  kind         EvidenceKind
+  storageKey   String       @unique // ruta del objeto en el bucket (nunca URL pública)
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  checksum     String? // sha256
+  uploadedById String
+  elementId    String?
+  inspectionId String?
+  answerId     String?
+  findingId    String?
+  actionPlanId String?
+  description  String?
+  createdAt    DateTime     @default(now())
+  deletedAt    DateTime?
+
+  uploadedBy User              @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  element    Element?          @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  inspection Inspection?       @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  answer     InspectionAnswer? @relation(fields: [answerId], references: [id], onDelete: Restrict)
+  finding    Finding?          @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  actionPlan ActionPlan?       @relation(fields: [actionPlanId], references: [id], onDelete: Restrict)
+
+  @@index([inspectionId])
+  @@index([answerId])
+  @@index([findingId])
+  @@index([actionPlanId])
+  @@index([elementId])
+  @@map("evidences")
+}
+
+// -----------------------------------------------------------------------------
+// Notificaciones (patrón outbox: 1 notificación → N entregas por canal)
+// -----------------------------------------------------------------------------
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String // p.ej. "finding.created", "action_plan.due_soon"
+  title     String
+  body      String
+  link      String? // ruta interna relativa
+  data      Json?
+  // Evita duplicar recordatorios (p.ej. "action_plan.due_soon:<id>:<fecha>").
+  dedupeKey String?   @unique
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String              @id @default(cuid())
+  notificationId String
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(PENDING)
+  attempts       Int                 @default(0)
+  lastError      String?
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, channel, createdAt])
+  @@map("notification_deliveries")
+}
+
+// -----------------------------------------------------------------------------
+// Auditoría y parámetros
+// -----------------------------------------------------------------------------
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?
+  action     String // p.ej. "user.create", "finding.status_change"
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}

@@ -1,0 +1,46 @@
+# Ejemplo de despliegue completo (staging / producción) en un solo host.
+#   cp .env.example .env.production   # y completar con valores reales
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# En producción real se recomienda PostgreSQL gestionado y S3/R2 en lugar de MinIO.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-inspecciones}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-inspecciones}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inspecciones}"]
+      interval: 5s
+      retries: 10
+
+  # Aplica migraciones y sincroniza el catálogo de permisos antes de iniciar la app.
+  migrate:
+    build:
+      context: .
+      target: migrate
+    env_file: .env.production
+    environment:
+      SEED_DEMO: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file: .env.production
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

@@ -1,0 +1,363 @@
+# Arquitectura — Sistema de Inspecciones de Emergencia
+
+> Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
+> Última actualización: Fase 1 (Fundación).
+
+---
+
+## A. Arquitectura propuesta
+
+**Monolito modular** con Next.js (App Router) sirviendo UI y backend en un
+solo despliegue, con capas internas bien separadas para poder extraer
+servicios más adelante si el volumen lo exige.
+
+```
+┌──────────────────────────── Navegador / PWA (móvil, tablet, PC) ─────────────────────────────┐
+│  React Server Components (lectura)   ·   Client Components (formularios, cámara, QR)         │
+└───────────────┬──────────────────────────────────────┬───────────────────────────────────────┘
+                │ HTML/RSC                              │ Server Actions (mutaciones)  /  Route Handlers (/api/*)
+┌───────────────▼──────────────────────────────────────▼───────────────────────────────────────┐
+│  src/app            Páginas y layouts. Solo orquestan: guardas de permisos + llamadas a servicios │
+│  src/server/actions Server Actions: autenticación → validación Zod → servicio → revalidación      │
+│  src/server/services Lógica de negocio + autorización por alcance + transacciones + auditoría      │
+│  src/server/auth    Sesiones, contraseñas, rate limit, usuario actual y permisos                   │
+│  src/lib            Código puro compartido: permisos, programación, validaciones, utilidades       │
+└───────────────┬────────────────────────────┬─────────────────────────┬───────────────────────┘
+                │ Prisma (driver adapter pg)  │ S3 API (URLs firmadas)   │ SMTP / canales
+          ┌─────▼─────┐                 ┌─────▼─────┐             ┌──────▼──────┐
+          │PostgreSQL │                 │ S3 / R2 / │             │ Correo, luego│
+          │           │                 │  MinIO    │             │ WhatsApp/SMS │
+          └───────────┘                 └───────────┘             └─────────────┘
+```
+
+Reglas de dependencia:
+
+- `app` → `server/actions` → `server/services` → `server/db`. Nunca al revés.
+- Los **servicios** son la única capa que habla con la base de datos para
+  escribir. Reciben un `ServiceContext` (usuario + IP/UA) y registran auditoría
+  en la misma transacción.
+- `src/lib` no importa nada del servidor: se puede usar en cliente, servidor,
+  seed y tests.
+- Todo módulo de servidor importa `server-only`, así un import accidental desde
+  el cliente rompe el build en lugar de filtrar código o secretos.
+
+### ¿Por qué Next.js (Server Actions + Route Handlers) y no NestJS?
+
+| Criterio | Next.js monolito | Next.js + NestJS |
+|---|---|---|
+| Despliegue | 1 contenedor | 2 servicios + contrato API |
+| Tipos extremo a extremo | Directos (mismo proyecto) | Requiere compartir DTOs / OpenAPI |
+| Velocidad de desarrollo MVP | Alta | Media |
+| Integraciones externas futuras | Route Handlers `/api/v1/*` | Nativo |
+| Escalabilidad | Horizontal (stateless) | Horizontal |
+
+Para un MVP empresarial con un solo frontend, NestJS agrega complejidad sin
+beneficio inmediato. La capa `server/services` es independiente de Next (no
+usa `cookies()` ni `headers()`), por lo que puede moverse a NestJS o a un
+worker si en el futuro aparece una app nativa o integraciones pesadas.
+
+---
+
+## B. Stack definitivo
+
+| Capa | Tecnología | Motivo |
+|---|---|---|
+| Framework | **Next.js 16** (App Router, Turbopack, `output: standalone`) | UI + backend en un despliegue, RSC para listados rápidos |
+| UI | **React 19.2**, **TypeScript** estricto | Tipado fuerte, `useActionState`, `useEffectEvent` |
+| Estilos | **Tailwind CSS 4** con tokens semánticos | Consistencia y mobile-first |
+| Componentes | Propios (`src/components/ui`) + `lucide-react` + `sonner` (toasts) | Sin dependencias pesadas; accesibles (ARIA, `<dialog>` nativo) |
+| Validación | **Zod 4** (esquemas compartidos cliente/servidor, mensajes en español) | Una sola fuente de verdad |
+| ORM | **Prisma 7** + `@prisma/adapter-pg` | Migraciones versionadas, consultas tipadas y parametrizadas |
+| BD | **PostgreSQL 16** | Relacional, JSONB para respuestas dinámicas |
+| Auth | Sesiones propias en BD + bcrypt | Revocables, sin dependencias externas, control total |
+| Archivos | API S3 (`@aws-sdk/client-s3`, Fase 3) con URLs firmadas | AWS S3, Cloudflare R2, MinIO sin cambiar código |
+| Correo | Nodemailer (SMTP) · Mailpit en local | Cualquier proveedor SMTP |
+| Pruebas | **Vitest** (unitarias), **Playwright** (E2E) | Rápidas; Chromium ya disponible |
+| Infra | Docker multi-etapa, docker compose, variables de entorno | development / staging / production |
+
+---
+
+## C. Estructura de carpetas
+
+```
+.
+├── prisma/
+│   ├── schema.prisma          Modelo de datos completo
+│   ├── migrations/            Migraciones SQL versionadas
+│   └── seed.ts                Catálogo de permisos/roles + datos de demostración
+├── prisma.config.ts           Configuración Prisma 7 (URL, seed)
+├── public/icons/              Íconos PWA
+├── src/
+│   ├── app/
+│   │   ├── (auth)/            login, forgot-password, reset-password (sin sesión)
+│   │   ├── (app)/             Área autenticada con AppShell
+│   │   │   ├── dashboard/
+│   │   │   ├── admin/{users,roles,processes,sites}/
+│   │   │   ├── profile/  forbidden/
+│   │   │   └── (fases siguientes) inventory/, inspections/, findings/, action-plans/, reports/
+│   │   ├── api/health/        Health check
+│   │   ├── manifest.ts        Web App Manifest (PWA)
+│   │   └── layout.tsx
+│   ├── components/
+│   │   ├── ui/                Primitivos reutilizables (Button, Input, DataList, ConfirmButton…)
+│   │   ├── layout/            AppShell y navegación filtrada por permisos
+│   │   └── forms/             Formularios de dominio (cliente)
+│   ├── emails/                Plantillas de correo (HTML + texto)
+│   ├── hooks/                 useActionForm (toasts, errores de campo, navegación)
+│   ├── lib/                   Código puro: permissions, scheduling, validation/*, utils
+│   ├── server/
+│   │   ├── auth/              session, password, tokens, rate-limit, current-user
+│   │   ├── actions/           Server Actions ("use server")
+│   │   ├── services/          Lógica de negocio por módulo
+│   │   ├── mail/              Envío de correo
+│   │   ├── audit.ts  db.ts  errors.ts  request-context.ts
+│   ├── generated/prisma/      Cliente Prisma generado (no versionado)
+│   └── proxy.ts               Redirección optimista a /login (Next 16: antes "middleware")
+├── tests/unit/                Vitest
+├── docs/                      Documentación
+├── Dockerfile  docker-compose.yml  docker-compose.prod.yml
+└── .env.example
+```
+
+---
+
+## D. Modelo de datos
+
+Ver `prisma/schema.prisma` (comentado). Resumen de entidades y relaciones:
+
+```
+Role ──< RolePermission >── Permission
+ │
+UserRole                    UserProcess >── Process ──< Element >── ElementType ──< InspectionTemplate ──< InspectionQuestion
+ │                              │                        │  │  │                         │                        │
+User ──────────────────────────┘                         │  │  └── Site ──< Area         │                        │
+ │  ├──< Session, PasswordResetToken                     │  └──< Inspection >───────────┘                        │
+ │  ├──< Notification ──< NotificationDelivery (canal)   │         └──< InspectionAnswer >──────────────────────┘
+ │  └──< AuditLog                                        │                   │
+ │                                                       └──< Finding >──────┘ (answer / question opcionales)
+ │                                                               └──< ActionPlan ──< ActionPlanEvent
+ └── Evidence (FKs opcionales a Element | Inspection | InspectionAnswer | Finding | ActionPlan)
+```
+
+Cardinalidades clave:
+
+| Relación | Cardinalidad | Nota |
+|---|---|---|
+| User ↔ Role | N:M (`user_roles`) | Permisos efectivos = unión de roles |
+| User ↔ Process | N:M (`user_processes`) | Define el alcance `*.read.process` |
+| Site → Area | 1:N | `@@unique([siteId, code])` |
+| ElementType → InspectionTemplate | 1:N (versionado) | Una plantilla `PUBLISHED` activa por tipo |
+| Template → Question | 1:N | Ordenadas por `order`; tipo de respuesta configurable |
+| Element → Inspection | 1:N | La inspección guarda `processId/siteId` como *snapshot* |
+| Inspection → Answer | 1:N | `@@unique([inspectionId, questionId])`; guarda texto/tipo de la pregunta |
+| Inspection/Answer → Finding | 1:N | Un hallazgo puede crearse también sin inspección (manual) |
+| Finding → ActionPlan | 1:N | Varios planes por hallazgo |
+| ActionPlan → ActionPlanEvent | 1:N | Línea de tiempo de estados y observaciones |
+| Notification → Delivery | 1:N | Una entrega por canal (outbox) |
+
+Decisiones del modelo:
+
+- **IDs `cuid`** (no secuenciales, no enumerables). Además `number`
+  autoincremental en inspecciones, hallazgos y planes (#000125) para
+  referencia humana.
+- **Snapshots**: `InspectionAnswer` guarda texto, tipo y orden de la pregunta;
+  `Inspection` guarda proceso y sede. Editar preguntas o trasladar un elemento
+  no altera el historial ni los indicadores pasados.
+- **Respuestas dinámicas** en `value Json` + `isCompliant Boolean?`
+  precalculado → los indicadores se calculan con SQL simple e índices.
+- **Regla de cumplimiento configurable** por pregunta (`complianceRule`), p.ej.
+  en "¿Tiene elementos faltantes?" el valor no conforme es `SÍ`.
+- **Borrado lógico**: `deletedAt` + `active` en datos maestros; `onDelete:
+  Restrict` en todo lo que tiene historial. Inspecciones, hallazgos, planes y
+  auditoría no se borran: cambian de estado.
+- **Índices** en las columnas de filtros del dashboard (proceso, sede, estado,
+  fechas, responsable) y en claves foráneas.
+- **Evidencias**: FKs opcionales explícitas (no polimorfismo por texto) para
+  conservar integridad referencial.
+- **QR**: `Element.qrToken` aleatorio y único, independiente del ID y del código.
+
+---
+
+## E. Roles y permisos
+
+Autorización **basada en permisos** (no en nombres de rol). Los roles son
+configurables desde la UI; el catálogo de permisos vive en
+`src/lib/permissions.ts` y se sincroniza a la BD con el seed.
+
+Tres niveles de control, todos en el servidor:
+
+1. **Acceso a página**: `requirePagePermission(...)` (redirige a `/forbidden`).
+2. **Acción**: `requirePermission(...)` en cada Server Action.
+3. **Alcance de datos**: `readScope()` → `all | process | own | assigned`,
+   traducido a filtros `WHERE` en los servicios (Fases 2–4).
+
+La navegación se filtra por permisos solo como ayuda visual.
+
+| Permiso | Admin | Inspector | Resp. proceso | Resp. acción | Gerencia |
+|---|:-:|:-:|:-:|:-:|:-:|
+| users.read / users.manage | ✔ | | | | |
+| roles.manage · processes.manage · sites.manage · settings.manage · audit.read | ✔ | | | | |
+| element_types.manage (tipos, plantillas, preguntas) | ✔ | | | | |
+| elements.read | all | all | process | | all |
+| elements.manage | ✔ | | | | |
+| inspections.read | all | own | process | | all |
+| inspections.perform | ✔ | ✔ | | | |
+| findings.read | all | assigned | process | assigned | all |
+| findings.create | ✔ | ✔ | | | |
+| findings.manage · findings.verify | ✔ | | ✔ | | |
+| findings.close | ✔ | | | | |
+| actions.read | all | | process | assigned | all |
+| actions.manage | ✔ | | ✔ | | |
+| actions.update (avance de lo asignado) | ✔ | | ✔ | ✔ | |
+| actions.verify | ✔ | | ✔ | | |
+| actions.close | ✔ | | | | |
+| evidences.upload | ✔ | ✔ | ✔ | ✔ | |
+| dashboard.view · reports.view | ✔ | | ✔ | | ✔ |
+| reports.export | ✔ | | | | ✔ |
+
+Reglas adicionales:
+
+- El rol **ADMIN** siempre conserva todos los permisos y no se puede desactivar.
+- Siempre debe quedar **al menos un administrador activo**.
+- **Segregación de funciones** (Fase 4): quien marca un plan como
+  *Solucionado* no puede verificarlo.
+
+---
+
+## F. Flujo principal
+
+```
+Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► Plan de acción ──► Evidencia ──► Verificación ──► Cierre
+ (QR/lista)   (plantilla     (no cumple    (prioridad,   (responsable,     (foto/PDF)    (usuario con     (usuario con
+              publicada)      → propone)    responsable)  fecha límite)                    *.verify)        *.close)
+```
+
+1. **Elemento**: el inspector lo abre desde "Mis inspecciones" o escaneando su
+   QR (`/q/{qrToken}`).
+2. **Inspección**: se crea `IN_PROGRESS` con la plantilla publicada del tipo;
+   las preguntas se renderizan dinámicamente según `responseType`.
+3. **Respuesta**: cada respuesta se guarda al momento (autoguardado) y se
+   evalúa con la regla de cumplimiento.
+4. **Hallazgo**: una respuesta no conforme en una pregunta con
+   `generatesFinding` abre inmediatamente el formulario de hallazgo con la
+   prioridad por defecto de la pregunta.
+5. **Finalizar**: valida obligatorias, calcula `compliancePct` y resultado,
+   actualiza `lastInspectionAt/nextInspectionAt` del elemento
+   (`src/lib/scheduling.ts`) y notifica a responsables.
+6. **Plan de acción**: `PENDIENTE → EN PROCESO → SOLUCIONADO → VERIFICADO → CERRADO`.
+   Cada transición la valida una máquina de estados en el servicio (permiso +
+   estado de origen) y queda en `ActionPlanEvent` y en auditoría. Verificar puede
+   devolver a *En proceso* con observación.
+7. **Hallazgo** pasa a *Cerrado* cuando todos sus planes están cerrados.
+
+---
+
+## G. Roadmap
+
+| Fase | Alcance | Estado |
+|---|---|---|
+| 1 Fundación | Proyecto, Prisma + esquema completo, auth (login/logout/sesiones/recuperación), usuarios, roles/permisos, procesos, sedes/áreas, layout responsive, PWA manifest, auditoría base, Docker, seed | ✅ |
+| 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ⏭ |
+| 3 Inspecciones | Mis inspecciones, formulario dinámico móvil, autoguardado, fotos a S3 (URL firmada), finalización y resultado | |
+| 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | |
+| 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | |
+| 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
+| 7 Notificaciones | In-app, correo, recordatorios y vencimientos (job programado) | |
+| 8 Reportes | Reportes filtrables, exportación CSV/Excel y PDF | |
+| 9 Endurecimiento | Visor de auditoría, E2E, rate limit distribuido, optimización, checklist de producción | |
+
+---
+
+## H. Decisiones técnicas
+
+| Decisión | Alternativas | Razón |
+|---|---|---|
+| Sesiones en BD con token opaco (hash SHA-256 en BD) | JWT, Auth.js | Revocación inmediata (desactivar usuario, cambio de contraseña), sin secretos en el token |
+| Expiración por inactividad (12 h) + absoluta (7 días) | Solo una | Equilibrio uso en campo / seguridad |
+| bcrypt coste 12 (bcryptjs, JS puro) | argon2 nativo | Sin binarios nativos en Alpine; seguro y probado |
+| Server Actions para mutaciones | API REST para todo | Protección CSRF integrada (verificación de Origin), menos código; `/api/v1` para integraciones |
+| Esquema completo en Fase 1 | Crecer tabla a tabla | Evita reestructuraciones y migraciones destructivas; las fases solo agregan lógica |
+| Plantillas versionadas + snapshots | Editar preguntas "en caliente" | Historial inmutable y auditable |
+| Programación en `src/lib/scheduling.ts` (función pura) | Cálculos en cada pantalla | Una sola fuente de verdad, probada con tests |
+| Notificaciones con outbox (`NotificationDelivery` por canal) | Envío directo | Reintentos, trazabilidad y nuevos canales sin tocar el dominio |
+| Archivos con URL firmada directa al bucket | Subir a través del servidor | No satura el servidor; límite de tamaño y MIME validados al firmar y al confirmar |
+| Proxy solo optimista | Autorización en el proxy | Recomendación de Next 16: la seguridad real va junto a los datos |
+| `output: standalone` | Imagen con node_modules completo | Imagen pequeña; migraciones en un job aparte (`--target migrate`) |
+
+---
+
+## I. Riesgos y mitigación
+
+| Riesgo | Impacto | Mitigación |
+|---|---|---|
+| Conectividad deficiente en campo | Inspecciones perdidas | Autoguardado por respuesta (Fase 3); arquitectura offline preparada (ver abajo) |
+| Cambios en preguntas alteran el historial | Datos no confiables | Snapshots + versionado de plantillas |
+| Fuga de permisos (solo UI) | Acceso indebido | Guardas en página, acción y alcance de consulta; tests de permisos |
+| Fotos pesadas desde celulares | Lentitud y costos | Compresión en cliente, límite `UPLOAD_MAX_MB`, subida directa firmada |
+| Rate limit en memoria con varias réplicas | Protección parcial | Interfaz `RateLimiter` lista para Redis/Upstash (Fase 9) |
+| Inconsistencia de fechas por zona horaria | Vencimientos erróneos | UTC en BD, `APP_TIMEZONE` (America/Bogota) al mostrar, lógica centralizada |
+| Crecimiento de `audit_logs` | Rendimiento | Índices por entidad/fecha; particionado o archivado por año cuando aplique |
+| Breaking changes de Next 16 / Prisma 7 | Errores de integración | Versiones fijadas, typecheck + build + E2E en cada fase |
+
+---
+
+## Estrategia de archivos (Fase 3)
+
+1. Cliente solicita `createUploadUrl({ entity, mimeType, size })`.
+2. Servidor valida permiso, MIME permitido (`image/jpeg|png|webp|heic`,
+   `application/pdf`), tamaño ≤ `UPLOAD_MAX_MB`, genera `storageKey`
+   (`{entidad}/{yyyy}/{mm}/{cuid}.{ext}`, nunca el nombre original) y devuelve
+   una URL **PUT firmada** (5 min).
+3. El cliente comprime (máx. 1920 px, JPEG 0.8) y sube directo al bucket.
+4. Cliente confirma → servidor verifica con `HeadObject` tamaño/tipo y crea
+   `Evidence`.
+5. Para ver: URL **GET firmada** de corta duración tras verificar permiso sobre
+   la entidad. El bucket es privado.
+
+## Estrategia de notificaciones (Fase 7)
+
+- `notify({ userIds, type, title, body, link, dedupeKey })` crea
+  `Notification` + `NotificationDelivery` por canal habilitado.
+- Interfaz `NotificationChannel { send(delivery) }` con implementaciones
+  `InAppChannel` (no-op) y `EmailChannel`; WhatsApp/SMS/Push son nuevas
+  implementaciones registradas en un mapa, sin tocar el dominio.
+- Job programado (`/api/cron/*` protegido con secreto, o worker) procesa
+  entregas pendientes y genera recordatorios (inspecciones vencidas, planes que
+  vencen en N días) con `dedupeKey` para no duplicar.
+
+## Estrategia de auditoría
+
+- `audit(ctx, { action, entityType, entityId, before, after }, tx)` dentro de
+  la misma transacción del cambio. `before/after` guardan solo campos modificados
+  (`diff`) y se redactan secretos.
+- Registra IP y user-agent. Ya cubre: login/logout/fallos, recuperación y
+  cambio de contraseña, usuarios, roles, procesos, sedes y áreas.
+- Visor con filtros en Fase 9.
+
+## Estrategia de pruebas
+
+| Nivel | Herramienta | Qué cubre |
+|---|---|---|
+| Unitarias | Vitest | Lógica pura: programación, permisos, validaciones, rate limit, reglas de cumplimiento, máquina de estados |
+| Integración | Vitest + PostgreSQL de prueba | Servicios con BD real (transacciones, alcance por permisos) |
+| E2E | Playwright (móvil y escritorio) | Criterios de aceptación del MVP (flujo completo de 24 pasos) |
+| Estáticas | `tsc`, ESLint | En cada commit / CI |
+
+## Estrategia offline (PWA)
+
+MVP: manifest, íconos, instalación y autoguardado por respuesta. Para
+sincronización offline completa se necesitaría:
+
+1. **Service Worker** (Serwist) con precache del *shell* y de la ruta de
+   inspección; caché *stale-while-revalidate* de catálogos.
+2. **Descarga previa** de inspecciones pendientes del inspector (elementos +
+   plantilla publicada) a **IndexedDB** (Dexie).
+3. **Captura local**: respuestas y fotos (Blob) en IndexedDB con
+   `Inspection.clientId` (UUID generado en el cliente, ya existe en el esquema).
+4. **Cola de sincronización** (Background Sync o reintento al recuperar red):
+   endpoint idempotente `POST /api/v1/sync/inspections` que hace *upsert* por
+   `clientId`, sube fotos con URLs firmadas y devuelve el resultado.
+5. **Conflictos**: la inspección es propiedad del inspector y es inmutable al
+   finalizarse → "primero en llegar gana"; si el elemento fue inspeccionado por
+   otra persona en ese lapso, ambas se conservan y se recalcula la próxima fecha.
+6. UI de estado: "Sin conexión · 3 inspecciones por sincronizar".
