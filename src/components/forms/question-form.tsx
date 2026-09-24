@@ -23,6 +23,7 @@ export interface QuestionValues {
   complianceRule: unknown;
   generatesFinding: boolean;
   defaultPriority: Priority;
+  tracksExpiry: boolean;
   answerCount: number;
 }
 
@@ -177,13 +178,22 @@ export function QuestionForm({
       )}
 
       {type === "DATE" && (
-        <Checkbox
-          id={id("dateNotPast")}
-          name="dateNotPast"
-          defaultChecked={rule.dateNotPast}
-          label="No cumple si la fecha ya pasó"
-          description="Útil para fechas de vencimiento o de próxima recarga."
-        />
+        <div className="grid gap-x-4 sm:grid-cols-2">
+          <Checkbox
+            id={id("tracksExpiry")}
+            name="tracksExpiry"
+            defaultChecked={question?.tracksExpiry}
+            label="Es la fecha de vencimiento del elemento"
+            description="Ej.: recarga del extintor. Se guarda en el elemento y genera alerta crítica cuando vence, aunque no se inspeccione."
+          />
+          <Checkbox
+            id={id("dateNotPast")}
+            name="dateNotPast"
+            defaultChecked={rule.dateNotPast}
+            label="No cumple si la fecha ya pasó"
+            description="Se aplica siempre a las fechas de vencimiento."
+          />
+        </div>
       )}
 
       <div className="grid gap-x-4 sm:grid-cols-2">

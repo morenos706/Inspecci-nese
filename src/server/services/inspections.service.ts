@@ -11,7 +11,8 @@ import { scheduleFields } from "@/lib/scheduling";
 import { todayISO, zonedDayBoundary } from "@/lib/utils";
 import { env } from "@/lib/env";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
-import { scheduleWhere } from "@/server/services/elements.service";
+import { expiryWhere, scheduleWhere } from "@/server/services/elements.service";
+import { expiryDateFromISO, expiryLabelFromQuestion } from "@/lib/expiry";
 import { paginated, paginationArgs } from "@/server/services/pagination";
 
 /** Clave de la "zona" para elementos sin zona asignada. */
@@ -53,7 +54,7 @@ export async function listInspectionZones(user: CurrentUser, siteId?: string) {
   const count = (where: Prisma.ElementWhereInput) =>
     db.element.groupBy({ by: ["siteId", "zoneId"], where: { AND: [base, where] }, _count: { _all: true } });
 
-  const [zones, totals, overdue, dueSoon] = await Promise.all([
+  const [zones, totals, overdue, dueSoon, expired] = await Promise.all([
     db.zone.findMany({
       where: { deletedAt: null, active: true, site: { active: true, deletedAt: null }, ...(siteId ? { siteId } : {}) },
       select: { id: true, name: true, code: true, site: { select: { id: true, name: true } } },
@@ -62,12 +63,13 @@ export async function listInspectionZones(user: CurrentUser, siteId?: string) {
     count({}),
     count(scheduleWhere("OVERDUE", now)),
     count(scheduleWhere("DUE_SOON", now)),
+    count(expiryWhere("EXPIRED")),
   ]);
 
   const key = (siteId: string, zoneId: string | null) => `${siteId}:${zoneId ?? NO_ZONE}`;
   const toMap = (rows: { siteId: string; zoneId: string | null; _count: { _all: number } }[]) =>
     new Map(rows.map((r) => [key(r.siteId, r.zoneId), r._count._all]));
-  const [t, o, d] = [toMap(totals), toMap(overdue), toMap(dueSoon)];
+  const [t, o, d, x] = [toMap(totals), toMap(overdue), toMap(dueSoon), toMap(expired)];
 
   const result = zones.map((z) => ({
     key: z.id,
@@ -77,6 +79,7 @@ export async function listInspectionZones(user: CurrentUser, siteId?: string) {
     total: t.get(key(z.site.id, z.id)) ?? 0,
     overdue: o.get(key(z.site.id, z.id)) ?? 0,
     dueSoon: d.get(key(z.site.id, z.id)) ?? 0,
+    expired: x.get(key(z.site.id, z.id)) ?? 0,
   }));
 
   // Elementos activos sin zona: una tarjeta por sede para que no queden fuera del recorrido.
@@ -93,6 +96,7 @@ export async function listInspectionZones(user: CurrentUser, siteId?: string) {
       total: t.get(key(site.id, null)) ?? 0,
       overdue: o.get(key(site.id, null)) ?? 0,
       dueSoon: d.get(key(site.id, null)) ?? 0,
+      expired: x.get(key(site.id, null)) ?? 0,
     });
   }
   return result;
@@ -122,6 +126,8 @@ export async function getZoneWorklist(user: CurrentUser, zoneId: string | null, 
       frequencyDays: true,
       lastInspectionAt: true,
       nextInspectionAt: true,
+      expiresAt: true,
+      expiryLabel: true,
       elementType: { select: { name: true } },
       inspections: {
         where: { status: "IN_PROGRESS" },
@@ -179,6 +185,7 @@ async function activeTemplateWithQuestions(elementTypeId: string) {
           complianceRule: true,
           generatesFinding: true,
           defaultPriority: true,
+          tracksExpiry: true,
         },
       },
     },
@@ -314,6 +321,7 @@ export async function getInspectionForRunner(inspectionId: string, user: Current
             complianceRule: true,
             generatesFinding: true,
             defaultPriority: true,
+            tracksExpiry: true,
           },
         });
   return { ...inspection, questions };
@@ -407,7 +415,7 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
   const [questions, answers] = await Promise.all([
     db.inspectionQuestion.findMany({
       where: { templateId: inspection.templateId, active: true, deletedAt: null },
-      select: { id: true, required: true, responseType: true, text: true },
+      select: { id: true, required: true, responseType: true, text: true, tracksExpiry: true, order: true },
     }),
     db.inspectionAnswer.findMany({
       where: { inspectionId },
@@ -424,6 +432,18 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
     const pending = questions.filter((q) => summary.missingRequired.includes(q.id)).map((q) => q.text);
     throw new DomainError(`Faltan ${pending.length} pregunta(s) obligatoria(s): ${pending.slice(0, 3).join(" · ")}`);
   }
+
+  // Fechas de vencimiento registradas (p.ej. recarga) → se copian al elemento.
+  const expiryQuestion = questions
+    .filter((q) => q.tracksExpiry)
+    .sort((a, b) => a.order - b.order)
+    .find((q) => typeof answers.find((a) => a.questionId === q.id)?.value === "string");
+  const expiry = expiryQuestion
+    ? {
+        expiresAt: expiryDateFromISO(answers.find((a) => a.questionId === expiryQuestion.id)!.value as string),
+        expiryLabel: expiryLabelFromQuestion(expiryQuestion.text),
+      }
+    : {};
 
   const completedAt = new Date();
   const schedule = scheduleFields({
@@ -450,7 +470,7 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
     // La inspección reprograma el elemento con la lógica central.
     await tx.element.update({
       where: { id: inspection.element.id },
-      data: { lastInspectionAt: completedAt, ...schedule },
+      data: { lastInspectionAt: completedAt, ...schedule, ...expiry },
     });
     await audit(
       auditCtx(ctx),

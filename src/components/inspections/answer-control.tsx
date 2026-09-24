@@ -14,6 +14,7 @@ export interface RunnerQuestion extends RuleQuestion {
   required: boolean;
   generatesFinding: boolean;
   defaultPriority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  tracksExpiry?: boolean;
 }
 
 const CHOICE_TYPES: ResponseType[] = ["YES_NO", "COMPLIES", "YES_NO_NA", "SELECT"];

@@ -32,6 +32,12 @@ inicial), fotos desde cámara o galería (comprimidas y validadas), finalizació
 con cálculo de cumplimiento y reprogramación automática, anulación e historial
 filtrable.
 
+**Vencimientos ✅**: una pregunta de fecha puede ser la *fecha de vencimiento*
+del elemento (p.ej. recarga del extintor). Si la fecha ya pasó, la respuesta
+no cumple y se propone un hallazgo **crítico**; además el elemento queda
+marcado como **Vencido** y el Inicio muestra una **alerta crítica** aunque
+nadie lo inspeccione. Aviso de "por vencer" 30 días antes.
+
 ## Requisitos
 
 - Node.js ≥ 20.9 (recomendado 22)
@@ -139,7 +145,11 @@ planes de acción para probar las fases siguientes.
 4. Intenta **Finalizar** antes de terminar: el sistema indica las obligatorias
    pendientes. Responde el resto y finaliza: verás el resultado (%) y la
    próxima inspección del elemento.
-5. Como `gerencia@inspecciones.local` revisa **Inspecciones → Historial**; como
+5. Vencimientos: como administrador, el Inicio muestra la alerta crítica por
+   `EXT-005` (recarga vencida). Al inspeccionarlo, ingresa una fecha de
+   vencimiento pasada: se propone hallazgo crítico con límite de 1 día. Tras la
+   recarga, actualiza la fecha en el inventario y la alerta desaparece.
+6. Como `gerencia@inspecciones.local` revisa **Inspecciones → Historial**; como
    `responsable@inspecciones.local` (Producción) verás la inspección y las
    fotos de su proceso.
 

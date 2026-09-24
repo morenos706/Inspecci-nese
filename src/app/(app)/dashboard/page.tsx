@@ -1,4 +1,6 @@
-import { AlertOctagon, Boxes, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
+import Link from "next/link";
+import { AlertOctagon, BatteryWarning, Boxes, Flame, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
+import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -32,6 +34,25 @@ export default async function DashboardPage() {
           )
         }
       />
+
+      {schedule && schedule.expired > 0 && (
+        <Alert tone="danger" className="mb-4" title={`ALERTA CRÍTICA: ${schedule.expired} elemento(s) con vencimiento expirado`}>
+          Por ejemplo, extintores con la recarga vencida. Requieren atención inmediata.{" "}
+          <Link href="/inventory?expiry=EXPIRED" className="font-semibold underline">
+            Ver elementos vencidos
+          </Link>
+        </Alert>
+      )}
+
+      {schedule && (
+        <section aria-label="Vencimientos" className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-subtle">Vencimientos (recargas, caducidades)</h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Vencidos · crítico" value={schedule.expired} icon={Flame} tone="danger" href="/inventory?expiry=EXPIRED" />
+            <StatCard label="Por vencer (30 días)" value={schedule.expiring} icon={BatteryWarning} tone="warning" href="/inventory?expiry=EXPIRING" />
+          </div>
+        </section>
+      )}
 
       {schedule && (
         <section aria-label="Programación de inspecciones" className="mb-6">

@@ -6,6 +6,8 @@ import { DataList } from "@/components/ui/data-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScheduleBadge } from "@/components/ui/schedule-badge";
+import { ExpiryBadge } from "@/components/ui/expiry-badge";
+import { env } from "@/lib/env";
 import { StartInspectionButton } from "@/components/inspections/start-inspection-button";
 import {
   ELEMENT_STATUS_LABELS,
@@ -17,7 +19,7 @@ import {
   WORKFLOW_STATUS_TONES,
 } from "@/lib/labels";
 import { FREQUENCY_LABELS } from "@/lib/scheduling";
-import { formatDate, formatDateTime, formatNumber } from "@/lib/utils";
+import { formatDate, formatDateTime, formatNumber, todayISO } from "@/lib/utils";
 import { hasPermission, requirePagePermission } from "@/server/auth/current-user";
 import { orNotFound } from "@/server/page-helpers";
 import { getElement } from "@/server/services/elements.service";
@@ -108,6 +110,16 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
                 {element.status === "ACTIVE" ? formatDate(element.nextInspectionAt) : "No aplica (elemento no activo)"}
               </Field>
               <Field label="Inspecciones realizadas">{element._count.inspections}</Field>
+              {element.expiresAt && (
+                <Field label={element.expiryLabel ?? "Vencimiento"}>
+                  <ExpiryBadge
+                    expiresAt={element.expiresAt}
+                    label={element.expiryLabel}
+                    today={todayISO(new Date(), env.APP_TIMEZONE)}
+                    showValid
+                  />
+                </Field>
+              )}
             </dl>
           </CardBody>
         </Card>

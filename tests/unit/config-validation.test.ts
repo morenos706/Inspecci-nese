@@ -29,6 +29,15 @@ describe("questionSchema", () => {
     expect(q.complianceRule).toEqual({ nonCompliantValues: ["Malo"] });
   });
 
+  it("Fecha de vencimiento: siempre no cumple si pasó y queda marcada", () => {
+    const q = questionSchema.parse({ ...base, responseType: "DATE", tracksExpiry: "on", defaultPriority: "CRITICAL" });
+    expect(q.tracksExpiry).toBe(true);
+    expect(q.complianceRule).toEqual({ dateNotPast: true });
+    expect(q.generatesFinding).toBe(true);
+    // Solo aplica a preguntas de fecha
+    expect(questionSchema.parse({ ...base, responseType: "YES_NO", tracksExpiry: "on" }).tracksExpiry).toBe(false);
+  });
+
   it("Texto nunca genera hallazgo aunque se marque", () => {
     expect(questionSchema.parse({ ...base, responseType: "TEXT" }).generatesFinding).toBe(false);
   });

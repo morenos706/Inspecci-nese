@@ -75,6 +75,7 @@ export function QuestionEditor({
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     <Badge tone="primary">{RESPONSE_TYPE_LABELS[q.responseType]}</Badge>
                     {q.required && <Badge>Obligatoria</Badge>}
+                    {q.tracksExpiry && <Badge tone="danger">Vencimiento del elemento</Badge>}
                     {!q.active && <Badge tone="neutral">Inactiva</Badge>}
                     {q.generatesFinding && (
                       <Badge tone={PRIORITY_TONES[q.defaultPriority]}>Hallazgo · {PRIORITY_LABELS[q.defaultPriority]}</Badge>

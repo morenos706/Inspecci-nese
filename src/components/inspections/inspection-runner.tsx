@@ -200,6 +200,11 @@ export function InspectionRunner({
                     )}
                   </p>
                   {q.helpText && <p className="mt-0.5 text-sm text-subtle">{q.helpText}</p>}
+                  {q.tracksExpiry && (
+                    <p className="mt-0.5 text-xs font-medium text-danger">
+                      Fecha de vencimiento: si ya pasó, se registra como hallazgo crítico.
+                    </p>
+                  )}
                 </div>
                 <span className="shrink-0 text-xs" aria-live="polite">
                   {status === "saving" && <Loader2 className="h-4 w-4 animate-spin text-subtle" aria-label="Guardando" />}

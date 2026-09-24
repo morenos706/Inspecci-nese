@@ -22,6 +22,7 @@ import {
 } from "../src/generated/prisma/client";
 import { ALL_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES } from "../src/lib/permissions";
 import { scheduleFields } from "../src/lib/scheduling";
+import { expiryLabelFromQuestion } from "../src/lib/expiry";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 
@@ -101,6 +102,7 @@ interface QuestionDef {
   nonCompliant?: string[];
   priority?: Priority;
   required?: boolean;
+  tracksExpiry?: boolean;
 }
 
 const ELEMENT_TYPES: {
@@ -124,7 +126,13 @@ const ELEMENT_TYPES: {
       { text: "¿Tiene sello de seguridad?", type: "YES_NO", priority: "HIGH" },
       { text: "¿La manguera está en buen estado?", type: "YES_NO" },
       { text: "¿Tiene señalización?", type: "YES_NO", priority: "LOW" },
-      { text: "¿Está vigente la recarga?", type: "YES_NO", help: "Revisa la etiqueta de la última recarga.", priority: "CRITICAL" },
+      {
+        text: "Fecha de vencimiento de la recarga",
+        type: "DATE",
+        help: "Según la etiqueta de la última recarga.",
+        priority: "CRITICAL",
+        tracksExpiry: true,
+      },
       { text: "Fotografía general del extintor", type: "PHOTO", required: false },
     ],
   },
@@ -164,8 +172,11 @@ const ELEMENT_TYPES: {
   },
 ];
 
+const TODAY = new Intl.DateTimeFormat("en-CA", { timeZone: process.env.APP_TIMEZONE ?? "America/Bogota" }).format(new Date());
+
 function isCompliant(q: QuestionDef, value: string | null): boolean | null {
   if (value === null || value === "NA") return null;
+  if (q.type === "DATE") return q.tracksExpiry ? value >= TODAY : null;
   if (q.type === "YES_NO" || q.type === "YES_NO_NA") return !(q.nonCompliant ?? ["NO"]).includes(value);
   if (q.type === "COMPLIES") return value === "COMPLIES";
   return null;
@@ -270,7 +281,7 @@ async function seedDemo() {
     });
     const questions: (QuestionDef & { id: string })[] = [];
     for (const [i, q] of t.questions.entries()) {
-      const evaluable = ["YES_NO", "YES_NO_NA", "COMPLIES"].includes(q.type);
+      const evaluable = ["YES_NO", "YES_NO_NA", "COMPLIES"].includes(q.type) || Boolean(q.tracksExpiry);
       const created = await db.inspectionQuestion.create({
         data: {
           templateId: template.id,
@@ -279,7 +290,12 @@ async function seedDemo() {
           responseType: q.type,
           required: q.required ?? true,
           order: i + 1,
-          complianceRule: q.nonCompliant ? { nonCompliantValues: q.nonCompliant } : undefined,
+          complianceRule: q.nonCompliant
+            ? { nonCompliantValues: q.nonCompliant }
+            : q.tracksExpiry
+              ? { dateNotPast: true }
+              : undefined,
+          tracksExpiry: q.tracksExpiry ?? false,
           generatesFinding: evaluable,
           defaultPriority: q.priority ?? "MEDIUM",
         },
@@ -333,6 +349,9 @@ async function seedDemo() {
         lastInspectionAt: last,
         ...scheduleFields({ lastInspectionAt: last, frequency: typeDef.frequency }),
         status: e.status ?? "ACTIVE",
+        ...(e.code === "EXT-005"
+          ? { expiresAt: new Date("2026-09-15T12:00:00.000Z"), expiryLabel: "Recarga" }
+          : {}),
       },
     });
     elements[e.code] = { id: created.id, processId: created.processId, siteId: created.siteId, type: e.type };
@@ -358,7 +377,16 @@ async function seedDemo() {
     const type = types[el.type]!;
     const when = d(date);
     const rows = type.questions.map((q, i) => {
-      const defaultValue = q.type === "COMPLIES" ? "COMPLIES" : ["YES_NO", "YES_NO_NA"].includes(q.type) ? (q.nonCompliant ? "NO" : "YES") : null;
+      const defaultValue =
+        q.type === "COMPLIES"
+          ? "COMPLIES"
+          : ["YES_NO", "YES_NO_NA"].includes(q.type)
+            ? q.nonCompliant
+              ? "NO"
+              : "YES"
+            : q.tracksExpiry
+              ? "2027-03-01"
+              : null;
       const value = i in answers ? answers[i]! : defaultValue;
       return { q, value, compliant: isCompliant(q, value) };
     });
@@ -396,6 +424,17 @@ async function seedDemo() {
       },
       include: { answers: true },
     });
+
+    const expiryRow = rows.find((r) => r.q.tracksExpiry && typeof r.value === "string");
+    if (expiryRow) {
+      await db.element.update({
+        where: { id: el.id },
+        data: {
+          expiresAt: new Date(`${expiryRow.value}T12:00:00.000Z`),
+          expiryLabel: expiryLabelFromQuestion(expiryRow.q.text),
+        },
+      });
+    }
 
     for (const f of findings) {
       const q = type.questions[f.question]!;
@@ -460,7 +499,7 @@ async function seedDemo() {
       planStatus: "PENDING",
     },
   ]);
-  await inspect("EXT-001", "2026-08-28", {});
+  await inspect("EXT-001", "2026-08-28", { 6: "2026-10-10" }); // recarga por vencer
   await inspect("EXT-002", "2026-09-10", { 2: "NO" }, [
     {
       question: 2,

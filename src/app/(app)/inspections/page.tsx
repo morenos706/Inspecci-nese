@@ -109,9 +109,14 @@ export default async function MyInspectionsPage({ searchParams }: PageProps<"/in
                   <p className="mt-0.5 text-lg font-semibold">{z.name}</p>
                   <p className="mt-1 text-sm text-subtle">{z.total} elemento(s) activo(s)</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {z.overdue > 0 && <Badge tone="danger">{z.overdue} vencida(s)</Badge>}
+                    {z.expired > 0 && (
+                      <Badge tone="danger" className="font-semibold">
+                        {z.expired} con vencimiento expirado
+                      </Badge>
+                    )}
+                    {z.overdue > 0 && <Badge tone="danger">{z.overdue} inspección(es) vencida(s)</Badge>}
                     {z.dueSoon > 0 && <Badge tone="warning">{z.dueSoon} próxima(s) a vencer</Badge>}
-                    {pending === 0 && z.total > 0 && <Badge tone="success">Al día</Badge>}
+                    {pending === 0 && z.expired === 0 && z.total > 0 && <Badge tone="success">Al día</Badge>}
                   </div>
                 </Link>
               </li>

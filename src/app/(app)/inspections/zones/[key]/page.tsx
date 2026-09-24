@@ -7,9 +7,11 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScheduleBadge } from "@/components/ui/schedule-badge";
+import { ExpiryBadge } from "@/components/ui/expiry-badge";
+import { env } from "@/lib/env";
 import { StartInspectionButton } from "@/components/inspections/start-inspection-button";
 import { scheduleStatus } from "@/lib/scheduling";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayISO } from "@/lib/utils";
 import { requirePagePermission } from "@/server/auth/current-user";
 import { orNotFound } from "@/server/page-helpers";
 import { getZoneWorklist, NO_ZONE } from "@/server/services/inspections.service";
@@ -24,6 +26,7 @@ export default async function ZoneWorklistPage({ params, searchParams }: PagePro
   if (noZone && typeof site !== "string") notFound();
   const { zone, elements } = await orNotFound(getZoneWorklist(user, noZone ? null : key, (site as string) ?? ""));
   const now = new Date();
+  const today = todayISO(now, env.APP_TIMEZONE);
   const pending = elements.filter(
     (e) => scheduleStatus(e.nextInspectionAt, e.frequency, now, e.frequencyDays) !== "ON_TIME",
   ).length;
@@ -65,6 +68,9 @@ export default async function ZoneWorklistPage({ params, searchParams }: PagePro
               <p className="mt-2 text-sm text-subtle">
                 Última: {formatDate(e.lastInspectionAt)} · Próxima: <strong className="text-foreground">{formatDate(e.nextInspectionAt)}</strong>
               </p>
+              <div className="mt-2">
+                <ExpiryBadge expiresAt={e.expiresAt} label={e.expiryLabel} today={today} />
+              </div>
               {e.othersInProgress.length > 0 && (
                 <Badge tone="info" className="mt-2">
                   En curso por {e.othersInProgress.join(", ")}

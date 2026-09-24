@@ -37,6 +37,8 @@ export interface ElementFormValues {
   frequencyDays: number | null;
   lastInspectionAt: Date | null;
   nextInspectionAt: Date | null;
+  expiresAt: Date | null;
+  expiryLabel: string | null;
   status: ElementStatus;
   inspectionCount: number;
 }
@@ -223,6 +225,16 @@ export function ElementForm({
               <Input name="firstInspectionAt" type="date" value={firstDate} onChange={(e) => setFirstDate(e.target.value)} />
             </FormField>
           )}
+          <FormField
+            label="Fecha de vencimiento"
+            errors={errors("expiresAt")}
+            hint="Ej.: próxima recarga. Al vencer se genera alerta crítica. Se actualiza con cada inspección."
+          >
+            <Input name="expiresAt" type="date" defaultValue={toInputDate(element?.expiresAt)} />
+          </FormField>
+          <FormField label="Concepto del vencimiento" errors={errors("expiryLabel")}>
+            <Input name="expiryLabel" defaultValue={element?.expiryLabel ?? ""} maxLength={80} placeholder="Ej.: Recarga" />
+          </FormField>
           <FormField label="Estado" errors={errors("status")} required>
             <Select name="status" defaultValue={element?.status ?? "ACTIVE"}>
               {ELEMENT_STATUSES.map((s) => (

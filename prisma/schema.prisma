@@ -383,6 +383,9 @@ model InspectionQuestion {
   complianceRule Json?
   // Si true, una respuesta "no cumple" propone crear un hallazgo automáticamente.
   generatesFinding Boolean  @default(true)
+  // Solo DATE: la respuesta es la fecha de vencimiento del elemento (p.ej.
+  // recarga del extintor). Al finalizar la inspección se copia a Element.expiresAt.
+  tracksExpiry     Boolean  @default(false)
   defaultPriority  Priority @default(MEDIUM)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -421,6 +424,10 @@ model Element {
   // con nextInspectionAt (src/lib/scheduling.ts → scheduleFields) para poder
   // filtrar por estado de programación con índices, sin repetir la lógica en SQL.
   dueSoonAt           DateTime?
+  // Vencimiento del elemento (recarga, fecha de caducidad de insumos…).
+  // Se actualiza con preguntas `tracksExpiry` o manualmente en el inventario.
+  expiresAt           DateTime?
+  expiryLabel         String?
   status              ElementStatus       @default(ACTIVE)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
@@ -443,6 +450,7 @@ model Element {
   @@index([responsibleId])
   @@index([nextInspectionAt])
   @@index([status, dueSoonAt])
+  @@index([status, expiresAt])
   @@map("elements")
 }
 

@@ -266,7 +266,7 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | ⏭ |
 | 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | |
 | 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
-| 7 Notificaciones | In-app, correo, recordatorios y vencimientos (job programado) | |
+| 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | |
 | 8 Reportes | Reportes filtrables, exportación CSV/Excel y PDF | |
 | 9 Endurecimiento | Visor de auditoría, E2E, rate limit distribuido, optimización, checklist de producción | |
 
@@ -353,6 +353,23 @@ botones subir/bajar (accesibles y usables en móvil).
   en la misma transacción.
 - Anular: solo en curso y sin hallazgos. Mientras la inspección no se
   finaliza, sus hallazgos son borradores que el brigadista puede eliminar.
+
+## Vencimientos de elementos (recarga de extintores, caducidades)
+
+- Una pregunta de tipo **Fecha** puede marcarse como *"Es la fecha de
+  vencimiento del elemento"* (`tracksExpiry`). Siempre aplica la regla "no
+  cumple si ya pasó" y su prioridad sugerida (p.ej. Crítica) se usa para el
+  hallazgo.
+- Al finalizar la inspección, esa fecha se copia al elemento
+  (`Element.expiresAt` + concepto, p.ej. "Recarga"). También se puede cargar
+  o actualizar a mano en el inventario (útil tras una recarga).
+- Estado único (`src/lib/expiry.ts`): **Vencido** (la fecha ya pasó → alerta
+  crítica), **Por vencer** (30 días), **Vigente**. `expiryRange()` traduce el
+  estado a SQL y un test garantiza que ambos coinciden.
+- La alerta no depende de que alguien inspeccione: el Inicio muestra
+  "ALERTA CRÍTICA" con el número de elementos vencidos, el inventario permite
+  filtrar por vencimiento y las zonas del brigadista marcan los elementos
+  vencidos. En la Fase 7 el mismo cálculo alimenta notificaciones y correos.
 
 ## Estrategia de archivos
 

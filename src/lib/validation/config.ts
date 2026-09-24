@@ -65,6 +65,7 @@ export const questionSchema = z
     min: zOptionalNumber,
     max: zOptionalNumber,
     dateNotPast: zCheckbox,
+    tracksExpiry: zCheckbox,
   })
   .transform((d, ctx) => {
     let options: QuestionOption[] | null = null;
@@ -96,7 +97,9 @@ export const questionSchema = z
       if (d.min !== undefined) rule.min = d.min;
       if (d.max !== undefined) rule.max = d.max;
     }
-    if (d.responseType === "DATE" && d.dateNotPast) rule.dateNotPast = true;
+    // Una fecha de vencimiento siempre "no cumple" cuando ya pasó.
+    const tracksExpiry = d.responseType === "DATE" && d.tracksExpiry;
+    if (d.responseType === "DATE" && (d.dateNotPast || tracksExpiry)) rule.dateNotPast = true;
 
     const complianceRule = Object.keys(rule).length ? rule : null;
     const evaluable = isEvaluable({ responseType: d.responseType, options, complianceRule });
@@ -112,6 +115,7 @@ export const questionSchema = z
       // Solo las preguntas evaluables pueden proponer hallazgos.
       generatesFinding: evaluable && d.generatesFinding,
       defaultPriority: d.defaultPriority,
+      tracksExpiry,
       options,
       complianceRule,
     };
@@ -144,6 +148,8 @@ export const elementSchema = z
     frequencyDays: zOptionalInt("Los días", 1, 3650),
     lastInspectionAt: zDateInput,
     firstInspectionAt: zDateInput,
+    expiresAt: zDateInput,
+    expiryLabel: zOptionalText(80),
     status: z.enum(ElementStatus).default("ACTIVE"),
   })
   .superRefine(refineCustomDays("frequencyDays"))
@@ -165,6 +171,7 @@ export const elementListQuerySchema = z.object({
   site: z.string().max(64).optional().catch(undefined),
   status: z.enum(ElementStatus).optional().catch(undefined),
   schedule: z.enum(["OVERDUE", "DUE_SOON", "ON_TIME"]).optional().catch(undefined),
+  expiry: z.enum(["EXPIRED", "EXPIRING"]).optional().catch(undefined),
 });
 
 export type ElementListQuery = z.infer<typeof elementListQuerySchema>;

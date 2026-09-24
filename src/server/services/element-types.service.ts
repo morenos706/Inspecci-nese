@@ -130,6 +130,7 @@ export async function getElementType(id: string) {
       complianceRule: true,
       generatesFinding: true,
       defaultPriority: true,
+      tracksExpiry: true,
       _count: { select: { answers: true } },
     },
   });
@@ -203,6 +204,7 @@ function questionData(input: QuestionInput) {
     active: input.active,
     generatesFinding: input.generatesFinding,
     defaultPriority: input.defaultPriority,
+    tracksExpiry: input.tracksExpiry,
     options: (input.options ?? null) as Prisma.InputJsonValue | null,
     complianceRule: (input.complianceRule ?? null) as Prisma.InputJsonValue | null,
   };
@@ -254,6 +256,7 @@ export async function saveQuestion(input: QuestionInput, ctx: ServiceContext) {
       active: true,
       generatesFinding: true,
       defaultPriority: true,
+      tracksExpiry: true,
       options: true,
       complianceRule: true,
       _count: { select: { answers: true } },

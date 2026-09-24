@@ -8,9 +8,11 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { ScheduleBadge } from "@/components/ui/schedule-badge";
+import { ExpiryBadge } from "@/components/ui/expiry-badge";
+import { env } from "@/lib/env";
 import { ELEMENT_STATUS_LABELS, ELEMENT_STATUS_TONES, ELEMENT_STATUSES } from "@/lib/labels";
 import { SCHEDULE_STATUS_LABELS } from "@/lib/scheduling";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayISO } from "@/lib/utils";
 import { elementListQuerySchema } from "@/lib/validation/config";
 import { getReadScope, hasPermission, requirePagePermission } from "@/server/auth/current-user";
 import { listElements } from "@/server/services/elements.service";
@@ -33,6 +35,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const processes =
     getReadScope(user, "elements") === "all" ? allProcesses : allProcesses.filter((p) => user.processIds.includes(p.id));
   const canManage = hasPermission(user, "elements.manage");
+  const today = todayISO(new Date(), env.APP_TIMEZONE);
 
   return (
     <>
@@ -67,6 +70,15 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
               label: "Programación",
               value: query.schedule,
               options: (["OVERDUE", "DUE_SOON", "ON_TIME"] as const).map((s) => ({ value: s, label: SCHEDULE_STATUS_LABELS[s] })),
+            },
+            {
+              name: "expiry",
+              label: "Vencimiento",
+              value: query.expiry,
+              options: [
+                { value: "EXPIRED", label: "Vencidos" },
+                { value: "EXPIRING", label: "Por vencer (30 días)" },
+              ],
             },
           ]}
         />
@@ -122,6 +134,11 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
               ),
             },
             {
+              key: "expiry",
+              header: "Vencimiento",
+              cell: (e) => <ExpiryBadge expiresAt={e.expiresAt} label={e.expiryLabel} today={today} />,
+            },
+            {
               key: "status",
               header: "Estado",
               hideOnMobile: true,
@@ -141,6 +158,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             site: query.site,
             status: query.status,
             schedule: query.schedule,
+            expiry: query.expiry,
           }}
         />
       </Card>

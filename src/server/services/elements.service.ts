@@ -7,6 +7,9 @@ import { audit, diff } from "@/server/audit";
 import { AuthorizationError, DomainError, NotFoundError, ValidationError } from "@/server/errors";
 import { getReadScope, type CurrentUser } from "@/server/auth/current-user";
 import { scheduleFields, type ScheduleStatus } from "@/lib/scheduling";
+import { expiryRange } from "@/lib/expiry";
+import { env } from "@/lib/env";
+import { todayISO } from "@/lib/utils";
 import type { elementSchema, ElementListQuery } from "@/lib/validation/config";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { paginated, paginationArgs } from "@/server/services/pagination";
@@ -44,12 +47,19 @@ export function scheduleWhere(status: Exclude<ScheduleStatus, "UNSCHEDULED">, no
   }
 }
 
+/** Elementos activos vencidos / por vencer (misma regla que expiryStatus()). */
+export function expiryWhere(status: "EXPIRED" | "EXPIRING", today = todayISO(new Date(), env.APP_TIMEZONE)): Prisma.ElementWhereInput {
+  return { status: "ACTIVE", expiresAt: expiryRange(status, today) };
+}
+
 const listSelect = {
   id: true,
   code: true,
   name: true,
   location: true,
   status: true,
+  expiresAt: true,
+  expiryLabel: true,
   frequency: true,
   frequencyDays: true,
   lastInspectionAt: true,
@@ -71,6 +81,7 @@ export async function listElements(query: ElementListQuery, user: CurrentUser) {
       query.site ? { siteId: query.site } : {},
       query.status ? { status: query.status } : {},
       query.schedule ? scheduleWhere(query.schedule) : {},
+      query.expiry ? expiryWhere(query.expiry) : {},
       query.q
         ? {
             OR: [
@@ -99,13 +110,15 @@ export async function listElements(query: ElementListQuery, user: CurrentUser) {
 export async function scheduleSummary(user: CurrentUser) {
   const base: Prisma.ElementWhereInput = { deletedAt: null, ...elementScopeWhere(user) };
   const now = new Date();
-  const [active, overdue, dueSoon, onTime] = await db.$transaction([
+  const [active, overdue, dueSoon, onTime, expired, expiring] = await db.$transaction([
     db.element.count({ where: { ...base, status: "ACTIVE" } }),
     db.element.count({ where: { AND: [base, scheduleWhere("OVERDUE", now)] } }),
     db.element.count({ where: { AND: [base, scheduleWhere("DUE_SOON", now)] } }),
     db.element.count({ where: { AND: [base, scheduleWhere("ON_TIME", now)] } }),
+    db.element.count({ where: { AND: [base, expiryWhere("EXPIRED")] } }),
+    db.element.count({ where: { AND: [base, expiryWhere("EXPIRING")] } }),
   ]);
-  return { active, overdue, dueSoon, onTime };
+  return { active, overdue, dueSoon, onTime, expired, expiring };
 }
 
 export async function getElement(id: string, user: CurrentUser) {
@@ -215,6 +228,8 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
         frequency: input.frequency,
         frequencyDays: input.frequencyDays,
         lastInspectionAt: input.lastInspectionAt ?? null,
+        expiresAt: input.expiresAt ?? null,
+        expiryLabel: input.expiresAt ? (input.expiryLabel ?? "Vencimiento") : null,
         status: input.status,
         ...schedule,
       },
@@ -246,6 +261,8 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
       frequencyDays: true,
       lastInspectionAt: true,
       nextInspectionAt: true,
+      expiresAt: true,
+      expiryLabel: true,
       status: true,
       _count: { select: { inspections: true } },
     },
@@ -281,6 +298,8 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
     frequency: input.frequency,
     frequencyDays: input.frequencyDays,
     lastInspectionAt,
+    expiresAt: input.expiresAt ?? null,
+    expiryLabel: input.expiresAt ? (input.expiryLabel ?? before.expiryLabel ?? "Vencimiento") : null,
     status: input.status,
     ...(scheduleChanged
       ? scheduleFields({

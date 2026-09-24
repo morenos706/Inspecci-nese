@@ -47,6 +47,8 @@ export default async function EditElementPage({ params }: PageProps<"/inventory/
           frequencyDays: element.frequencyDays,
           lastInspectionAt: element.lastInspectionAt,
           nextInspectionAt: element.nextInspectionAt,
+          expiresAt: element.expiresAt,
+          expiryLabel: element.expiryLabel,
           status: element.status,
           inspectionCount: element._count.inspections,
         }}
