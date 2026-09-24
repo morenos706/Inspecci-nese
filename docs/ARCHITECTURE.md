@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fases 6 y 8 (QR, reportes y carga masiva). Guía de implementación: [`DESPLIEGUE.md`](DESPLIEGUE.md).
+> Última actualización: Fase 7 (notificaciones). Guía de implementación: [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 ---
 
@@ -266,7 +266,7 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre, hallazgos automáticos por vencimiento | ✅ |
 | 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | ✅ |
 | 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | ✅ |
-| 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | |
+| 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | ✅ |
 | 8 Reportes | Reportes filtrables, exportación Excel y PDF, informe por inspección, carga masiva de inventario | ✅ |
 | 9 Endurecimiento | Visor de auditoría, E2E, rate limit distribuido, optimización, checklist de producción | |
 
@@ -474,16 +474,37 @@ lógico. Proveedores: `STORAGE_DRIVER=s3` (AWS S3 con rol IAM o llaves, Cloudfla
 `local` (disco o volumen Docker, una sola instancia). Si el volumen de archivos crece mucho, se
 puede pasar a URL firmada directa conservando la validación al confirmar.
 
-## Estrategia de notificaciones (Fase 7)
+## Notificaciones (Fase 7)
 
-- `notify({ userIds, type, title, body, link, dedupeKey })` crea
-  `Notification` + `NotificationDelivery` por canal habilitado.
-- Interfaz `NotificationChannel { send(delivery) }` con implementaciones
-  `InAppChannel` (no-op) y `EmailChannel`; WhatsApp/SMS/Push son nuevas
-  implementaciones registradas en un mapa, sin tocar el dominio.
-- Job programado (`/api/cron/*` protegido con secreto, o worker) procesa
-  entregas pendientes y genera recordatorios (inspecciones vencidas, planes que
-  vencen en N días) con `dedupeKey` para no duplicar.
+- **Outbox**: `notify({ userIds, type, title, body, link, dedupeKey, excludeUserId })`
+  crea `Notification` (visible de inmediato en la campana) + una
+  `NotificationDelivery` EMAIL `PENDING`, dentro de la misma transacción del
+  cambio de negocio. Nunca se envía correo dentro de una transacción.
+- **Envío** (`dispatchPendingEmails`): cada minuto (programador interno) y en
+  cada `/api/cron/run`. Cada entrega se *reclama* con un `updateMany`
+  condicional sobre `attempts` (seguro con varias réplicas). Reintentos con
+  espera 2/4/8/16 min, máximo 5 → `FAILED`; más de 72 h pendiente → `SKIPPED`.
+  Se omite si el usuario está inactivo o desactivó los correos
+  (`User.emailNotifications`, en *Mi cuenta*), o si no hay `SMTP_HOST`.
+- **Eventos**: plan asignado/reasignado, devuelto, solucionado (a quienes tienen
+  `actions.verify` en el proceso, excepto quien lo solucionó), verificado y
+  cerrado (al responsable), hallazgo crítico y vencimiento automático (a quienes
+  tienen `actions.manage` en el proceso). "En el proceso" = asignado al proceso
+  o con alcance global (`actions.read.all`), vía `usersWithPermissionInProcess`.
+- **Recordatorios** (`reminders.service.ts`, cada hora, idempotentes por
+  `dedupeKey`): plan por vencer (≤ 3 días), plan vencido (a responsable y
+  gestores, se repite cada 7 días), elemento por vencer (a 30 y 7 días),
+  resumen diario de inspecciones vencidas/por vencer por zona a brigadistas y,
+  a responsables de proceso, las vencidas de sus procesos (desde las 6:00 hora
+  local, `APP_TIMEZONE`).
+- **Interfaz**: campana con contador (consulta `/api/notifications/summary`
+  cada minuto, al volver a la pestaña y al navegar; `navigator.setAppBadge`
+  en la PWA instalada), bandeja `/notifications` con filtro de no leídas y
+  "Marcar todas como leídas". Abrir una notificación pasa por
+  `/api/notifications/[id]/open`, que solo actúa sobre notificaciones propias y
+  solo redirige a rutas internas (`safeInternalLink`).
+- **Nuevos canales** (WhatsApp, SMS, push): agregar la entrega en `notify()` y
+  su despachador; quienes llaman a `notify()` no cambian.
 
 ## Estrategia de auditoría
 

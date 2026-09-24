@@ -7,7 +7,7 @@ import { expiryISO } from "@/lib/expiry";
 import { addDaysISO, formatDate, formatNumber, todayISO } from "@/lib/utils";
 import { expiryWhere } from "@/server/services/elements.service";
 import { dueDateFromISO } from "@/server/services/findings.service";
-import { notify } from "@/server/services/notifications.service";
+import { notify, usersWithPermissionInProcess } from "@/server/services/notifications.service";
 import { resolveResponsibleFor } from "@/server/services/responsibles";
 
 /**
@@ -106,6 +106,18 @@ export async function generateExpiryFindings(now = new Date()) {
             title: `ALERTA CRÍTICA: ${concept} vencida en ${element.code}`,
             body: `Se te asignó el plan de acción ${formatNumber(plan.number)}. Fecha límite: ${formatDate(dueDate)}.`,
             link: `/action-plans/${plan.id}`,
+          },
+          tx,
+        );
+        // Quienes gestionan planes en el proceso también se enteran de la alerta crítica.
+        await notify(
+          {
+            userIds: await usersWithPermissionInProcess("actions.manage", element.processId, "actions.read.all", tx),
+            excludeUserId: responsibleId,
+            type: "finding.critical",
+            title: `ALERTA CRÍTICA: ${concept} vencida en ${element.code}`,
+            body: `${element.name}. Hallazgo ${formatNumber(finding.number)} asignado automáticamente. Fecha límite: ${formatDate(dueDate)}.`,
+            link: `/findings/${finding.id}`,
           },
           tx,
         );

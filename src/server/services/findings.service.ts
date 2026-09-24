@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { getReadScope, type CurrentUser } from "@/server/auth/current-user";
 import { paginated, paginationArgs } from "@/server/services/pagination";
-import { notify } from "@/server/services/notifications.service";
+import { notify, usersWithPermissionInProcess } from "@/server/services/notifications.service";
 import { formatDate, formatNumber } from "@/lib/utils";
 import { audit } from "@/server/audit";
 import { AuthorizationError, DomainError, NotFoundError, ValidationError } from "@/server/errors";
@@ -89,6 +89,19 @@ export async function createFindingFromAnswer(input: FindingFromAnswerInput, ctx
       },
       tx,
     );
+    if (input.priority === "CRITICAL") {
+      await notify(
+        {
+          userIds: await usersWithPermissionInProcess("actions.manage", inspection.processId, "actions.read.all", tx),
+          excludeUserId: responsible.id,
+          type: "finding.critical",
+          title: `Hallazgo CRÍTICO ${formatNumber(finding.number)}`,
+          body: `${input.description}\nAcción requerida: ${input.requiredAction}. Fecha límite ${formatDate(dueDate)}.`,
+          link: `/findings/${finding.id}`,
+        },
+        tx,
+      );
+    }
     await audit(
       auditCtx(ctx),
       { action: "finding.create", entityType: "Finding", entityId: finding.id, after: { ...input, actionPlanId: plan.id } },

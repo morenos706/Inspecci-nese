@@ -2,12 +2,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { ChangePasswordForm } from "@/components/forms/password-forms";
+import { EmailPreferenceToggle } from "@/components/notifications/notification-actions";
 import { requirePageUser } from "@/server/auth/current-user";
+import { getEmailPreference } from "@/server/services/notifications.service";
 
 export const metadata = { title: "Mi cuenta" };
 
 export default async function ProfilePage() {
   const user = await requirePageUser();
+  const emailNotifications = await getEmailPreference(user.id);
   return (
     <>
       <PageHeader title="Mi cuenta" />
@@ -41,6 +44,12 @@ export default async function ProfilePage() {
                 </dd>
               </div>
             </dl>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Notificaciones" description="Siempre verás tus avisos en la campana; elige si también quieres recibirlos por correo." />
+          <CardBody>
+            <EmailPreferenceToggle enabled={emailNotifications} />
           </CardBody>
         </Card>
         <Card>

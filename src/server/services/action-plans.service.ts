@@ -11,7 +11,7 @@ import { formatDate, formatNumber, todayISO } from "@/lib/utils";
 import { canPerform, deriveFindingStatus, WORKFLOW_ACTIONS, type WorkflowAction, type WorkflowActor } from "@/lib/workflow";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { dueDateFromISO } from "@/server/services/findings.service";
-import { notify } from "@/server/services/notifications.service";
+import { notify, usersWithPermissionInProcess } from "@/server/services/notifications.service";
 import { paginated, paginationArgs } from "@/server/services/pagination";
 
 type Tx = Prisma.TransactionClient;
@@ -290,6 +290,32 @@ export async function transitionActionPlan(input: z.infer<typeof transitionSchem
       },
       tx,
     );
+    if (action === "solve") {
+      await notify(
+        {
+          userIds: await usersWithPermissionInProcess("actions.verify", plan.finding.processId, "actions.read.all", tx),
+          excludeUserId: ctx.user.id,
+          type: "action_plan.solved",
+          title: `Plan ${formatNumber(plan.number)} listo para verificar`,
+          body: `${plan.finding.element.code}: ${input.comment ?? "Se registró la solución."}`,
+          link: `/action-plans/${plan.id}`,
+        },
+        tx,
+      );
+    }
+    if (action === "verify" || action === "close") {
+      await notify(
+        {
+          userIds: [plan.responsibleId],
+          excludeUserId: ctx.user.id,
+          type: action === "verify" ? "action_plan.verified" : "action_plan.closed",
+          title: `Plan ${formatNumber(plan.number)} ${action === "verify" ? "verificado" : "cerrado"}`,
+          body: input.comment || (action === "verify" ? "La solución fue aprobada." : "El plan quedó cerrado."),
+          link: `/action-plans/${plan.id}`,
+        },
+        tx,
+      );
+    }
     if (action === "reject") {
       await notify(
         {

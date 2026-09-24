@@ -130,6 +130,8 @@ model User {
   jobTitle         String?
   active           Boolean   @default(true)
   mustChangePassword Boolean @default(false)
+  // Preferencia: recibir por correo las notificaciones (las internas siempre llegan).
+  emailNotifications Boolean @default(true)
   lastLoginAt      DateTime?
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?

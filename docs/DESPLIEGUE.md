@@ -272,7 +272,8 @@ celular pedirá permiso para usar la cámara: deben **permitirlo**.
 | AWS: `ssh` desde tu computador se queda esperando | Tu IP cambió (internet residencial/móvil): edita la regla SSH y vuelve a elegir **Mi IP**. Usuario: `ubuntu` (Ubuntu) o `ec2-user` (Amazon Linux) |
 | El sitio no abre con HTTPS | Revisa que el registro DNS apunte a la IP y que los puertos 80/443 estén abiertos; mira `docker compose -f docker-compose.prod.yml logs caddy` |
 | `Configuración de entorno inválida` en los logs | Falta o está mal una variable de `.env.production` |
-| No llegan los correos | Verifica `SMTP_*`; en Microsoft 365 la cuenta debe tener habilitado "SMTP autenticado" |
+| No llegan los correos | Verifica `SMTP_*`; en Microsoft 365 la cuenta debe tener habilitado "SMTP autenticado"; en Gmail/Google Workspace usa `smtp.gmail.com`, puerto 587 y una **contraseña de aplicación**. Busca el error con `docker compose -f docker-compose.prod.yml logs app \| grep mail`. Los avisos siempre quedan en la campana 🔔; los correos pendientes se reintentan hasta 5 veces durante 72 h |
+| Un usuario no recibe correos pero los demás sí | Revisa en su **Mi cuenta** que tenga activo "Recibir notificaciones por correo" |
 | No se pueden tomar fotos | La cámara exige HTTPS y el permiso de cámara en el navegador del celular |
 | No inicia la sesión tras actualizar | Borra las cookies del sitio; las sesiones se conservan en la base de datos |
 | Ver el estado de los servicios | `docker compose -f docker-compose.prod.yml ps` |

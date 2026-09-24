@@ -55,6 +55,14 @@ hallazgos registrados vs. cerrados), hallazgos por prioridad, planes por estado
 y cumplimiento por proceso y por sede, con filtros por periodo, proceso, sede,
 tipo, responsable y estado. El seed incluye 12 meses de historial.
 
+**Fase 7 — Notificaciones ✅**: campana 🔔 con contador (escritorio y móvil,
+también en el ícono de la app instalada), bandeja `/notifications`, correo con
+reintentos y preferencia por usuario. Avisos: plan asignado, devuelto,
+solucionado (a verificadores), verificado/cerrado, hallazgo crítico (a gestores
+del proceso), plan por vencer (3 días), plan vencido (semanal, al responsable y
+gestores), elemento por vencer (30 y 7 días) y resumen diario de inspecciones
+vencidas por zona.
+
 **Carga masiva, reportes y QR ✅** (Fases 6 y 8):
 - **Carga masiva** (*Administración → Carga masiva*): plantilla Excel con listas
   desplegables (zonas y elementos), vista previa con errores por fila y
@@ -208,6 +216,17 @@ En un servidor van al volumen `uploads` o a Amazon S3 / Cloudflare R2.
 3. Usa los atajos de periodo y los filtros (p. ej. Proceso = Producción): todo
    el tablero se recalcula con el mismo corte.
 4. Ingresa como `responsable@inspecciones.local`: solo verás su proceso.
+
+## Cómo probar las notificaciones
+
+1. Ejecuta las tareas programadas (o espera: corren cada hora):
+   `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/run`.
+2. Ingresa como `responsable@inspecciones.local`: la campana 🔔 muestra las no
+   leídas (planes vencidos, alertas). Al abrir una, queda leída y te lleva al plan.
+3. Los correos llegan a Mailpit (http://localhost:8025). En **Mi cuenta** puedes
+   desactivarlos; la campana sigue funcionando.
+4. Como `accion@inspecciones.local` marca un plan como solucionado: los
+   verificadores del proceso reciben el aviso; al verificarlo, el responsable también.
 
 ## Cómo probar carga masiva, reportes y QR
 
