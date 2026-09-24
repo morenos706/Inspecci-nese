@@ -90,7 +90,7 @@ En **EC2 → Lanzar una instancia**:
 | Imagen (AMI) | **Ubuntu Server 24.04 LTS** (64 bits x86). Los comandos de esta guía son para Ubuntu |
 | Tipo de instancia | **t3.medium** (2 vCPU, 4 GB). Mínimo aceptable: t3.small (2 GB) + memoria swap (ver 2.3). **No uses t3.micro** (1 GB): no alcanza para compilar la aplicación |
 | Par de claves | *Crear un nuevo par de claves* → tipo ED25519, formato `.pem` → se descarga: guárdalo, es la llave del servidor |
-| Configuración de red | *Permitir tráfico SSH* desde **Mi IP**; marcar **Permitir tráfico HTTPS** y **Permitir tráfico HTTP** desde Internet |
+| Configuración de red | *Permitir tráfico SSH* desde **Mi IP**; marcar **Permitir tráfico HTTPS** y **Permitir tráfico HTTP** desde Internet. Para usar el botón *Conectar → EC2 Instance Connect* agrega además la regla SSH con origen en la lista de prefijos `com.amazonaws.<región>.ec2-instance-connect` (ver Problemas frecuentes) |
 | Almacenamiento | **30 GiB gp3** (8 GiB no alcanza para Docker + fotos) |
 
 Después de lanzarla:
@@ -256,6 +256,8 @@ celular pedirá permiso para usar la cámara: deben **permitirlo**.
 
 | Síntoma | Solución |
 |---|---|
+| AWS: *Failed to connect to your instance* al usar **EC2 Instance Connect** | Instance Connect entra desde servidores de AWS, no desde tu IP. En la instancia → pestaña **Seguridad** → grupo de seguridad → **Editar reglas de entrada** → **Agregar regla**: Tipo *SSH*, Origen *Personalizado* → lista de prefijos `com.amazonaws.us-east-2.ec2-instance-connect` (cambia la región si no es Ohio) → Guardar. Verifica también que la instancia esté *En ejecución* con *2/2 comprobaciones superadas* y tenga IP pública |
+| AWS: `ssh` desde tu computador se queda esperando | Tu IP cambió (internet residencial/móvil): edita la regla SSH y vuelve a elegir **Mi IP**. Usuario: `ubuntu` (Ubuntu) o `ec2-user` (Amazon Linux) |
 | El sitio no abre con HTTPS | Revisa que el registro DNS apunte a la IP y que los puertos 80/443 estén abiertos; mira `docker compose -f docker-compose.prod.yml logs caddy` |
 | `Configuración de entorno inválida` en los logs | Falta o está mal una variable de `.env.production` |
 | No llegan los correos | Verifica `SMTP_*`; en Microsoft 365 la cuenta debe tener habilitado "SMTP autenticado" |
