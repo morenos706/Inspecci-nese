@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fase 1 (Fundación).
+> Última actualización: Fase 2 (Configuración e inventario).
 
 ---
 
@@ -175,6 +175,10 @@ Decisiones del modelo:
 - **Evidencias**: FKs opcionales explícitas (no polimorfismo por texto) para
   conservar integridad referencial.
 - **QR**: `Element.qrToken` aleatorio y único, independiente del ID y del código.
+- **Programación persistida**: `nextInspectionAt` y `dueSoonAt` se calculan
+  siempre con `scheduleFields()` (`src/lib/scheduling.ts`). Así los filtros
+  🟢/🟡/🔴 son condiciones SQL simples e indexadas (`scheduleWhere()` en
+  `elements.service.ts`) y un test garantiza que coinciden con `scheduleStatus()`.
 
 ---
 
@@ -257,8 +261,8 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | Fase | Alcance | Estado |
 |---|---|---|
 | 1 Fundación | Proyecto, Prisma + esquema completo, auth (login/logout/sesiones/recuperación), usuarios, roles/permisos, procesos, sedes/áreas, layout responsive, PWA manifest, auditoría base, Docker, seed | ✅ |
-| 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ⏭ |
-| 3 Inspecciones | Mis inspecciones, formulario dinámico móvil, autoguardado, fotos a S3 (URL firmada), finalización y resultado | |
+| 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ✅ |
+| 3 Inspecciones | Mis inspecciones, formulario dinámico móvil, autoguardado, fotos a S3 (URL firmada), finalización y resultado | ⏭ |
 | 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | |
 | 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | |
 | 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
@@ -300,6 +304,30 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | Breaking changes de Next 16 / Prisma 7 | Errores de integración | Versiones fijadas, typecheck + build + E2E en cada fase |
 
 ---
+
+## Preguntas dinámicas y reglas de cumplimiento (Fase 2)
+
+Todo el comportamiento de una pregunta vive en datos, no en código:
+
+| Tipo | Valor guardado | Regla configurable (`complianceRule`) | ¿Evaluable? |
+|---|---|---|---|
+| Sí / No | `"YES"` \| `"NO"` | Qué respuesta no cumple (por defecto `NO`; `SÍ` para preguntas negativas) | Sí |
+| Sí / No / No aplica | `"YES"` \| `"NO"` \| `"NA"` | Igual; `NA` no cuenta para el cumplimiento | Sí |
+| Cumple / No cumple | `"COMPLIES"` \| `"NOT_COMPLIES"` | — | Sí |
+| Número | `number` | Rango `min` / `max` | Si hay rango |
+| Fecha | `"YYYY-MM-DD"` | `dateNotPast`: no cumple si ya pasó | Si se activa |
+| Selección / múltiple | `string` / `string[]` | Opciones que no cumplen | Si se marcan |
+| Texto / Fotografía | `string` / evidencia | — | No |
+
+`src/lib/inspection-rules.ts` concentra `normalizeAnswerValue()` (valida el
+valor recibido), `evaluateCompliance()` (cumple / no cumple / no evaluable) y
+`describeRule()`; lo usan el editor de preguntas, el formulario de inspección
+(Fase 3), los reportes y las pruebas. Solo las preguntas evaluables pueden
+proponer hallazgos.
+
+Edición segura: una pregunta con respuestas no puede cambiar de tipo (se
+desactiva y se crea otra); eliminar es borrado lógico; el orden se cambia con
+botones subir/bajar (accesibles y usables en móvil).
 
 ## Estrategia de archivos (Fase 3)
 

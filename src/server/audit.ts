@@ -52,6 +52,15 @@ export async function audit(ctx: AuditContext, entry: AuditEntry, tx: Tx = db) {
   });
 }
 
+/** JSON con claves ordenadas: jsonb de PostgreSQL no conserva el orden de las claves. */
+export function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
 /** Devuelve solo los campos que cambiaron (para registrar before/after compactos). */
 export function diff<T extends Record<string, unknown>>(before: T, after: Partial<T>) {
   const b: Partial<T> = {};
@@ -62,7 +71,7 @@ export function diff<T extends Record<string, unknown>>(before: T, after: Partia
     const same =
       prev instanceof Date && next instanceof Date
         ? prev.getTime() === next.getTime()
-        : JSON.stringify(prev) === JSON.stringify(next);
+        : stableStringify(prev ?? null) === stableStringify(next ?? null);
     if (!same) {
       b[key] = prev;
       a[key] = next as T[keyof T];

@@ -49,3 +49,27 @@ describe("scheduleStatus", () => {
     expect(scheduleStatus(null, "MONTHLY", now)).toBe("UNSCHEDULED");
   });
 });
+
+import { dueSoonDate, scheduleFields, FREQUENCIES } from "@/lib/scheduling";
+
+describe("scheduleFields", () => {
+  it("calcula próxima desde la última inspección", () => {
+    const r = scheduleFields({ lastInspectionAt: utc("2026-09-01"), frequency: "MONTHLY" });
+    expect(r.nextInspectionAt.toISOString()).toBe(utc("2026-10-01").toISOString());
+    expect(r.dueSoonAt.toISOString()).toBe(utc("2026-09-24").toISOString());
+  });
+
+  it("sin historial usa la primera inspección programada", () => {
+    const r = scheduleFields({ lastInspectionAt: null, frequency: "MONTHLY", firstInspectionAt: utc("2026-10-15") });
+    expect(r.nextInspectionAt.toISOString()).toBe(utc("2026-10-15").toISOString());
+  });
+
+  // Garantiza que el filtro SQL (dueSoonAt) y scheduleStatus nunca se contradigan.
+  it.each(FREQUENCIES)("dueSoonAt es coherente con scheduleStatus (%s)", (frequency) => {
+    const next = utc("2026-10-10");
+    const days = frequency === "CUSTOM" ? 30 : null;
+    const boundary = dueSoonDate(next, frequency, days);
+    expect(scheduleStatus(next, frequency, new Date(boundary.getTime() - 1000), days)).toBe("ON_TIME");
+    expect(scheduleStatus(next, frequency, new Date(boundary.getTime() + 1000), days)).toBe("DUE_SOON");
+  });
+});

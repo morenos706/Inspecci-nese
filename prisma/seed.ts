@@ -21,7 +21,7 @@ import {
   type WorkflowStatus,
 } from "../src/generated/prisma/client";
 import { ALL_PERMISSIONS, PERMISSIONS, SYSTEM_ROLES } from "../src/lib/permissions";
-import { computeNextInspection } from "../src/lib/scheduling";
+import { scheduleFields } from "../src/lib/scheduling";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 
@@ -331,7 +331,7 @@ async function seedDemo() {
         responsibleId: users[e.responsible],
         frequency: typeDef.frequency,
         lastInspectionAt: last,
-        nextInspectionAt: last ? computeNextInspection(last, typeDef.frequency) : new Date(),
+        ...scheduleFields({ lastInspectionAt: last, frequency: typeDef.frequency }),
         status: e.status ?? "ACTIVE",
       },
     });

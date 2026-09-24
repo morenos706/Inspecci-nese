@@ -16,6 +16,14 @@ roles y permisos configurables, procesos, sedes y áreas, layout responsive
 (sidebar en escritorio, barra inferior en móvil), manifest PWA, auditoría,
 esquema de base de datos completo, seed de demostración y Docker.
 
+**Fase 2 — Configuración ✅**: tipos de elemento configurables, editor de
+preguntas dinámicas (9 tipos de respuesta, reglas de cumplimiento, orden,
+activación, prioridad sugerida del hallazgo), inventario de elementos con
+filtros por tipo/proceso/sede/estado/programación, alcance por proceso,
+código sugerido, sede → área dependiente, cálculo centralizado de la próxima
+inspección (🟢 al día · 🟡 próxima a vencer · 🔴 vencida) y ficha del elemento
+con hallazgos abiertos e historial.
+
 ## Requisitos
 
 - Node.js ≥ 20.9 (recomendado 22)
@@ -92,6 +100,25 @@ planes de acción para probar las fases siguientes.
 7. **Mi cuenta** → cambiar contraseña (cierra las demás sesiones).
 8. "¿Olvidaste tu contraseña?" → revisar el correo en Mailpit y restablecerla.
 9. Revisar la auditoría: `select action, "entityType", after from audit_logs order by id desc;`
+
+## Cómo probar la Fase 2
+
+1. Como administrador: **Tipos y preguntas** → Nuevo tipo (p. ej. `Lavaojos`,
+   prefijo `LAV`). Se abre el editor de preguntas.
+2. Agrega preguntas de distintos tipos: Sí/No; Sí/No con «¿Qué respuesta NO
+   cumple?» = Sí (pregunta negativa); Selección con opciones y marcando las que
+   no cumplen; Número con rango. Reordénalas con las flechas, edita y elimina.
+3. **Inventario** → Nuevo elemento → elige `Lavaojos`: se sugiere `LAV-001` y
+   la frecuencia del tipo. Al elegir la sede se filtran sus áreas. Con última
+   inspección `01/09/2026` y frecuencia mensual la vista previa muestra
+   `01/10/2026`.
+4. En el inventario filtra por **Programación: Vencida**; en **Inicio** los
+   contadores 🟢🟡🔴 llevan al listado filtrado.
+5. Abre `EXT-023`: hallazgo abierto e historial. Al editarlo, el tipo está
+   bloqueado porque ya tiene inspecciones.
+6. Ingresa como `responsable@inspecciones.local` (Producción): solo ve
+   elementos de su proceso y no puede crear elementos; como
+   `inspector@inspecciones.local` no accede a Tipos y preguntas.
 
 ## Entornos y despliegue
 

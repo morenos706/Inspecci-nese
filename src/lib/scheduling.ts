@@ -122,3 +122,29 @@ export function scheduleStatus(
   const windowMs = Math.max(dueSoonWindowDays(frequency, customDays), 1) * DAY_MS;
   return diffMs <= windowMs ? "DUE_SOON" : "ON_TIME";
 }
+
+/**
+ * Campos de programación que se persisten en el elemento. Es la ÚNICA forma
+ * en que los servicios deben calcular nextInspectionAt / dueSoonAt.
+ *
+ *  - Con última inspección: próxima = última + frecuencia.
+ *  - Sin historial: próxima = fecha de primera inspección indicada, o `now`.
+ */
+export function scheduleFields(input: {
+  lastInspectionAt: Date | null;
+  frequency: Frequency;
+  frequencyDays?: number | null;
+  firstInspectionAt?: Date | null;
+  now?: Date;
+}): { nextInspectionAt: Date; dueSoonAt: Date } {
+  const next = input.lastInspectionAt
+    ? computeNextInspection(input.lastInspectionAt, input.frequency, input.frequencyDays)
+    : (input.firstInspectionAt ?? input.now ?? new Date());
+  return { nextInspectionAt: next, dueSoonAt: dueSoonDate(next, input.frequency, input.frequencyDays) };
+}
+
+/** Fecha desde la cual la inspección se considera "próxima a vencer" (coherente con scheduleStatus). */
+export function dueSoonDate(nextInspection: Date, frequency: Frequency, customDays?: number | null): Date {
+  const windowDays = Math.max(dueSoonWindowDays(frequency, customDays), 1);
+  return new Date(nextInspection.getTime() - windowDays * DAY_MS);
+}

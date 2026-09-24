@@ -1,4 +1,13 @@
-import { Building2, KeyRound, LayoutDashboard, Network, Users, type LucideIcon } from "lucide-react";
+import {
+  Boxes,
+  Building2,
+  KeyRound,
+  LayoutDashboard,
+  ListChecks,
+  Network,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import type { PermissionCode } from "@/lib/permissions";
 
 export interface NavItem {
@@ -22,7 +31,22 @@ export interface NavSection {
  */
 export const NAVIGATION: NavSection[] = [
   {
-    items: [{ href: "/dashboard", label: "Inicio", icon: LayoutDashboard, mobile: true }],
+    items: [
+      { href: "/dashboard", label: "Inicio", icon: LayoutDashboard, mobile: true },
+      {
+        href: "/inventory",
+        label: "Inventario",
+        icon: Boxes,
+        anyOf: ["elements.read.all", "elements.read.process"],
+        mobile: true,
+      },
+    ],
+  },
+  {
+    title: "Configuración",
+    items: [
+      { href: "/admin/element-types", label: "Tipos y preguntas", icon: ListChecks, anyOf: ["element_types.manage"] },
+    ],
   },
   {
     title: "Administración",

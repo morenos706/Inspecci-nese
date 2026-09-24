@@ -1,8 +1,9 @@
-import { Building2, KeyRound, MapPin, Network, Users } from "lucide-react";
+import { AlertOctagon, Boxes, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
-import { hasPermission, requirePageUser } from "@/server/auth/current-user";
+import { getReadScope, hasPermission, requirePageUser } from "@/server/auth/current-user";
+import { scheduleSummary } from "@/server/services/elements.service";
 import { getFoundationSummary } from "@/server/services/dashboard.service";
 
 export const metadata = { title: "Inicio" };
@@ -10,12 +11,28 @@ export const metadata = { title: "Inicio" };
 export default async function DashboardPage() {
   const user = await requirePageUser();
   const isAdmin = hasPermission(user, "users.manage");
-  const summary = isAdmin ? await getFoundationSummary() : null;
+  const canSeeElements = getReadScope(user, "elements") !== null;
+  const [summary, schedule] = await Promise.all([
+    isAdmin ? getFoundationSummary() : null,
+    canSeeElements ? scheduleSummary(user) : null,
+  ]);
   const firstName = user.name.split(" ")[0];
 
   return (
     <>
       <PageHeader title={`Hola, ${firstName}`} description="Resumen general del sistema de inspecciones." />
+
+      {schedule && (
+        <section aria-label="Programación de inspecciones" className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-subtle">Programación de inspecciones</h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Elementos activos" value={schedule.active} icon={Boxes} tone="neutral" href="/inventory?status=ACTIVE" />
+            <StatCard label="Vencidas" value={schedule.overdue} icon={AlertOctagon} tone="danger" href="/inventory?schedule=OVERDUE" />
+            <StatCard label="Próximas a vencer" value={schedule.dueSoon} icon={CalendarClock} tone="warning" href="/inventory?schedule=DUE_SOON" />
+            <StatCard label="Al día" value={schedule.onTime} icon={CalendarCheck} tone="success" href="/inventory?schedule=ON_TIME" />
+          </div>
+        </section>
+      )}
 
       {summary && (
         <section aria-label="Datos maestros" className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -28,10 +45,10 @@ export default async function DashboardPage() {
       )}
 
       <Card>
-        <CardHeader title="Indicadores de inspección" description="Disponible en la Fase 5 del proyecto." />
+        <CardHeader title="Indicadores de hallazgos y cumplimiento" description="Disponible en la Fase 5 del proyecto." />
         <CardBody className="text-sm text-subtle">
-          Aquí se mostrarán inspecciones pendientes, próximas a vencer y vencidas, hallazgos abiertos y críticos, planes de
-          acción y cumplimiento por proceso y sede.
+          Aquí se mostrarán inspecciones realizadas, hallazgos abiertos y críticos, planes de acción, cumplimiento por
+          proceso y sede y la tendencia mensual.
         </CardBody>
       </Card>
     </>

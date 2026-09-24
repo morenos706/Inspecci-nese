@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useTransition, type ReactNode } from "react";
+import { useId, useRef, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button, type ButtonVariant } from "@/components/ui/button";
+import { Button, type ButtonSize, type ButtonVariant } from "@/components/ui/button";
 import type { ActionState } from "@/lib/action-state";
 
 /**
@@ -17,6 +17,8 @@ export function ConfirmButton({
   confirmLabel = "Confirmar",
   variant = "outline",
   confirmVariant = "danger",
+  size,
+  ariaLabel,
   children,
 }: {
   action: () => Promise<ActionState>;
@@ -25,9 +27,13 @@ export function ConfirmButton({
   confirmLabel?: string;
   variant?: ButtonVariant;
   confirmVariant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Obligatorio si el botón solo muestra un ícono. */
+  ariaLabel?: string;
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -47,16 +53,16 @@ export function ConfirmButton({
 
   return (
     <>
-      <Button variant={variant} onClick={() => dialogRef.current?.showModal()}>
+      <Button variant={variant} size={size} aria-label={ariaLabel} onClick={() => dialogRef.current?.showModal()}>
         {children}
       </Button>
       <dialog
         ref={dialogRef}
-        aria-labelledby="confirm-title"
+        aria-labelledby={titleId}
         className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-surface p-0 shadow-xl"
       >
         <div className="p-5">
-          <h2 id="confirm-title" className="text-lg font-semibold">
+          <h2 id={titleId} className="text-lg font-semibold">
             {title}
           </h2>
           {description && <div className="mt-2 text-sm text-muted">{description}</div>}

@@ -414,6 +414,10 @@ model Element {
   frequencyDays       Int? // solo si frequency = CUSTOM
   lastInspectionAt    DateTime?
   nextInspectionAt    DateTime?
+  // Momento en que la inspección pasa a "próxima a vencer". Se calcula junto
+  // con nextInspectionAt (src/lib/scheduling.ts → scheduleFields) para poder
+  // filtrar por estado de programación con índices, sin repetir la lógica en SQL.
+  dueSoonAt           DateTime?
   status              ElementStatus       @default(ACTIVE)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
@@ -434,6 +438,7 @@ model Element {
   @@index([siteId, status])
   @@index([responsibleId])
   @@index([nextInspectionAt])
+  @@index([status, dueSoonAt])
   @@map("elements")
 }
 
