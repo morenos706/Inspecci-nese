@@ -5,6 +5,7 @@
 import type { BadgeTone } from "@/components/ui/badge";
 import type {
   ElementStatus,
+  FindingSource,
   InspectionResult,
   InspectionStatus,
   Priority,
@@ -83,4 +84,10 @@ export const INSPECTION_STATUS_LABELS: Record<InspectionStatus, string> = {
 export const INSPECTION_RESULT_LABELS: Record<InspectionResult, string> = {
   COMPLIANT: "Cumple",
   NON_COMPLIANT: "No cumple",
+};
+
+export const FINDING_SOURCE_LABELS: Record<FindingSource, string> = {
+  INSPECTION: "Inspección",
+  MANUAL: "Manual",
+  EXPIRY: "Vencimiento (automático)",
 };

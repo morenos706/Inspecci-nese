@@ -14,11 +14,13 @@ import {
 } from "@/lib/uploads";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { ensureAnswer } from "@/server/services/inspections.service";
+import { actionPlanScopeWhere, managesProcess } from "@/server/services/action-plans.service";
 import { storage } from "@/server/storage";
 
 export type EvidenceTarget =
   | { kind: "answer"; inspectionId: string; questionId: string }
-  | { kind: "finding"; findingId: string };
+  | { kind: "finding"; findingId: string }
+  | { kind: "actionPlan"; actionPlanId: string };
 
 /**
  * Sube una evidencia. Valida permiso, propiedad de la inspección en curso,
@@ -36,11 +38,28 @@ export async function uploadEvidence(
   if (file.bytes.byteLength === 0) throw new DomainError("El archivo está vacío.");
   if (file.bytes.byteLength > maxBytes) throw new DomainError(`El archivo supera el máximo de ${env.UPLOAD_MAX_MB} MB.`);
   const mimeType = detectMimeType(file.bytes);
-  if (!mimeType || !isImage(mimeType)) throw new DomainError("Solo se permiten fotografías JPG, PNG o WEBP.");
+  // En inspecciones solo fotos; en planes de acción también PDF (actas, facturas de recarga…).
+  const allowsPdf = target.kind === "actionPlan";
+  if (!mimeType || (!isImage(mimeType) && !(allowsPdf && mimeType === "application/pdf"))) {
+    throw new DomainError(allowsPdf ? "Solo se permiten fotografías (JPG, PNG, WEBP) o PDF." : "Solo se permiten fotografías JPG, PNG o WEBP.");
+  }
 
   // Resolver y autorizar la entidad destino
-  let link: { answerId?: string; findingId?: string; inspectionId: string };
-  if (target.kind === "answer") {
+  let link: { answerId?: string; findingId?: string; actionPlanId?: string; inspectionId?: string };
+  if (target.kind === "actionPlan") {
+    const plan = await db.actionPlan.findFirst({
+      where: { AND: [{ id: target.actionPlanId }, actionPlanScopeWhere(ctx.user)] },
+      select: { id: true, status: true, responsibleId: true, finding: { select: { processId: true } } },
+    });
+    if (!plan) throw new NotFoundError("El plan de acción no existe.");
+    if (plan.responsibleId !== ctx.user.id && !managesProcess(ctx.user, plan.finding.processId)) {
+      throw new AuthorizationError("Solo el responsable del plan puede adjuntar evidencias.");
+    }
+    if (plan.status !== "PENDING" && plan.status !== "IN_PROGRESS") {
+      throw new DomainError("Solo se adjuntan evidencias a planes pendientes o en proceso.");
+    }
+    link = { actionPlanId: plan.id };
+  } else if (target.kind === "answer") {
     const answer = await ensureAnswer(target.inspectionId, target.questionId, ctx.user);
     link = { answerId: answer.id, inspectionId: target.inspectionId };
   } else {
@@ -56,29 +75,38 @@ export async function uploadEvidence(
   }
 
   const existing = await db.evidence.count({
-    where: { deletedAt: null, ...(link.answerId ? { answerId: link.answerId } : { findingId: link.findingId }) },
+    where: {
+      deletedAt: null,
+      ...(link.answerId
+        ? { answerId: link.answerId }
+        : link.actionPlanId
+          ? { actionPlanId: link.actionPlanId }
+          : { findingId: link.findingId }),
+    },
   });
   if (existing >= MAX_EVIDENCES_PER_TARGET) {
     throw new DomainError(`Máximo ${MAX_EVIDENCES_PER_TARGET} archivos por pregunta o hallazgo.`);
   }
 
   const now = new Date();
-  const storageKey = `inspections/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${EXTENSION_BY_MIME[mimeType]}`;
+  const folder = link.actionPlanId ? "action-plans" : "inspections";
+  const storageKey = `${folder}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${EXTENSION_BY_MIME[mimeType]}`;
   await storage().put(storageKey, file.bytes, mimeType);
 
   try {
     return await db.$transaction(async (tx) => {
       const evidence = await tx.evidence.create({
         data: {
-          kind: "PHOTO",
+          kind: isImage(mimeType) ? "PHOTO" : "DOCUMENT",
           storageKey,
-          fileName: sanitizeFileName(file.name, `foto.${EXTENSION_BY_MIME[mimeType]}`),
+          fileName: sanitizeFileName(file.name, `evidencia.${EXTENSION_BY_MIME[mimeType]}`),
           mimeType,
           sizeBytes: file.bytes.byteLength,
           checksum: createHash("sha256").update(file.bytes).digest("hex"),
           uploadedById: ctx.user.id,
           answerId: link.answerId ?? null,
           findingId: link.findingId ?? null,
+          actionPlanId: link.actionPlanId ?? null,
         },
         select: { id: true, fileName: true },
       });
@@ -112,7 +140,7 @@ const evidenceAccessSelect = {
       inspection: { select: { inspectorId: true, processId: true, status: true } },
     },
   },
-  actionPlan: { select: { responsibleId: true, finding: { select: { processId: true } } } },
+  actionPlan: { select: { status: true, responsibleId: true, finding: { select: { processId: true } } } },
   element: { select: { processId: true } },
 } as const;
 
@@ -165,8 +193,11 @@ export async function deleteEvidence(id: string, ctx: ServiceContext) {
   const ev = await loadEvidence(id);
   if (!ev || ev.deletedAt) throw new NotFoundError("El archivo no existe.");
   const inspection = ev.answer?.inspection ?? ev.finding?.inspection;
-  if (ev.uploadedById !== ctx.user.id || inspection?.status !== "IN_PROGRESS") {
-    throw new DomainError("Solo puedes quitar tus fotos mientras la inspección está en curso.");
+  const editable = ev.actionPlan
+    ? ev.actionPlan.status === "PENDING" || ev.actionPlan.status === "IN_PROGRESS"
+    : inspection?.status === "IN_PROGRESS";
+  if (ev.uploadedById !== ctx.user.id || !editable) {
+    throw new DomainError("Solo puedes quitar tus archivos mientras la inspección o el plan siguen abiertos.");
   }
   await db.$transaction(async (tx) => {
     await tx.evidence.update({ where: { id }, data: { deletedAt: new Date() } });

@@ -1,6 +1,8 @@
 import {
   Boxes,
   ClipboardCheck,
+  ListTodo,
+  TriangleAlert,
   Building2,
   KeyRound,
   LayoutDashboard,
@@ -39,6 +41,20 @@ export const NAVIGATION: NavSection[] = [
         label: "Inspecciones",
         icon: ClipboardCheck,
         anyOf: ["inspections.perform", "inspections.read.all", "inspections.read.process", "inspections.read.own"],
+        mobile: true,
+      },
+      {
+        href: "/findings",
+        label: "Hallazgos",
+        icon: TriangleAlert,
+        anyOf: ["findings.read.all", "findings.read.process", "findings.read.assigned"],
+        mobile: true,
+      },
+      {
+        href: "/action-plans",
+        label: "Planes",
+        icon: ListTodo,
+        anyOf: ["actions.read.all", "actions.read.process", "actions.read.assigned"],
         mobile: true,
       },
       {

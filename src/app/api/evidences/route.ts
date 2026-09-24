@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const targetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("answer"), inspectionId: z.string().min(1).max(64), questionId: z.string().min(1).max(64) }),
   z.object({ kind: z.literal("finding"), findingId: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal("actionPlan"), actionPlanId: z.string().min(1).max(64) }),
 ]);
 
 /**

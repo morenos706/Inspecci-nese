@@ -323,7 +323,7 @@ async function seedDemo() {
     { code: "EXT-002", type: "EXT", name: "Extintor CO2 15 lb", process: "PROD", site: principal.id, zone: "PLA", location: "Tablero eléctrico línea 1", responsible: "responsable", last: "2026-09-10" },
     { code: "EXT-003", type: "EXT", name: "Extintor ABC 20 lb", process: "MANT", site: principal.id, zone: "PLA", location: "Taller de mantenimiento", responsible: "accion", last: "2026-07-15" },
     { code: "EXT-004", type: "EXT", name: "Extintor Solkaflam 3700 g", process: "ADM", site: norte.id, zone: "REC", location: "Recepción, detrás del counter", responsible: "admin", last: "2026-09-20" },
-    { code: "EXT-005", type: "EXT", name: "Extintor ABC 30 lb satelital", process: "SEG", site: norte.id, zone: "PAR", location: "Entrada parqueadero", responsible: "admin", last: null },
+    { code: "EXT-005", type: "EXT", name: "Extintor ABC 30 lb satelital", process: "SEG", site: norte.id, zone: "PAR", location: "Entrada parqueadero", responsible: "accion", last: null },
     { code: "BOT-001", type: "BOT", name: "Botiquín tipo A", process: "PROD", site: principal.id, zone: "BOD", location: "Oficina de bodega", responsible: "responsable", last: "2026-09-05" },
     { code: "BOT-002", type: "BOT", name: "Botiquín tipo B", process: "ADM", site: principal.id, zone: "OFI", location: "Cocineta piso 2", responsible: "admin", last: "2026-08-20" },
     { code: "BOT-003", type: "BOT", name: "Botiquín tipo A", process: "SEG", site: norte.id, zone: "REC", location: "Recepción", responsible: "admin", last: "2026-09-18" },

@@ -89,6 +89,14 @@ enum WorkflowStatus {
   CLOSED
 }
 
+// Origen del hallazgo: inspección, registro manual o generado por el sistema
+// al vencer un elemento (p.ej. recarga de extintor).
+enum FindingSource {
+  INSPECTION
+  MANUAL
+  EXPIRY
+}
+
 enum EvidenceKind {
   PHOTO
   DOCUMENT
@@ -142,6 +150,7 @@ model User {
   findingsClosed        Finding[]      @relation("FindingClosedBy")
   actionPlansResponsible ActionPlan[]  @relation("ActionPlanResponsible")
   actionPlansCreated    ActionPlan[]   @relation("ActionPlanCreatedBy")
+  actionPlansSolved     ActionPlan[]   @relation("ActionPlanSolvedBy")
   actionPlansVerified   ActionPlan[]   @relation("ActionPlanVerifiedBy")
   actionPlansClosed     ActionPlan[]   @relation("ActionPlanClosedBy")
   actionPlanEvents      ActionPlanEvent[]
@@ -547,8 +556,12 @@ model Finding {
   responsibleId  String?
   dueDate        DateTime?
   status         WorkflowStatus @default(PENDING)
+  source         FindingSource  @default(INSPECTION)
+  // Evita duplicados en hallazgos automáticos (p.ej. "expiry:<elementId>:<aaaa-mm-dd>").
+  dedupeKey      String?        @unique
   observations   String?
-  createdById    String
+  // null = creado por el sistema
+  createdById    String?
   solvedAt       DateTime?
   verifiedAt     DateTime?
   verifiedById   String?
@@ -564,7 +577,7 @@ model Finding {
   process     Process             @relation(fields: [processId], references: [id], onDelete: Restrict)
   site        Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
   responsible User?               @relation("FindingResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-  createdBy   User                @relation("FindingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User?               @relation("FindingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   verifiedBy  User?               @relation("FindingVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
   closedBy    User?               @relation("FindingClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
 
@@ -578,6 +591,7 @@ model Finding {
   @@index([siteId, status])
   @@index([responsibleId, status])
   @@index([dueDate])
+  @@index([elementId, source, status])
   @@map("findings")
 }
 
@@ -590,8 +604,11 @@ model ActionPlan {
   dueDate       DateTime
   status        WorkflowStatus @default(PENDING)
   observations  String?
-  createdById   String
+  // null = creado por el sistema
+  createdById   String?
   solvedAt      DateTime?
+  // Quien lo marcó como solucionado: no puede verificarlo (segregación de funciones).
+  solvedById    String?
   verifiedAt    DateTime?
   verifiedById  String?
   closedAt      DateTime?
@@ -601,7 +618,8 @@ model ActionPlan {
 
   finding     Finding @relation(fields: [findingId], references: [id], onDelete: Restrict)
   responsible User    @relation("ActionPlanResponsible", fields: [responsibleId], references: [id], onDelete: Restrict)
-  createdBy   User    @relation("ActionPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User?   @relation("ActionPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  solvedBy    User?   @relation("ActionPlanSolvedBy", fields: [solvedById], references: [id], onDelete: Restrict)
   verifiedBy  User?   @relation("ActionPlanVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
   closedBy    User?   @relation("ActionPlanClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
 
@@ -618,14 +636,14 @@ model ActionPlan {
 model ActionPlanEvent {
   id           String          @id @default(cuid())
   actionPlanId String
-  userId       String
+  userId       String? // null = sistema
   fromStatus   WorkflowStatus?
   toStatus     WorkflowStatus?
   comment      String?
   createdAt    DateTime        @default(now())
 
   actionPlan ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([actionPlanId, createdAt])
   @@map("action_plan_events")

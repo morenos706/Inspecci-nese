@@ -180,7 +180,9 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
             {inspection.findings.map((f) => (
               <li key={f.id} className="px-4 py-3 sm:px-6">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">{formatNumber(f.number)}</span>
+                  <Link href={`/findings/${f.id}`} className="font-semibold text-primary hover:underline">
+                    {formatNumber(f.number)}
+                  </Link>
                   <Badge tone={PRIORITY_TONES[f.priority]}>{PRIORITY_LABELS[f.priority]}</Badge>
                   <Badge tone={WORKFLOW_STATUS_TONES[f.status]}>{WORKFLOW_STATUS_LABELS[f.status]}</Badge>
                 </div>

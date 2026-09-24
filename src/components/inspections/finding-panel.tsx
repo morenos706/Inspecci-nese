@@ -83,7 +83,6 @@ export function FindingPanel({
         <div className="mt-3">
           <PhotoUploader
             target={{ kind: "finding", findingId: finding.id }}
-            inspectionId={inspectionId}
             photos={finding.evidences}
             label="Fotos del hallazgo"
           />

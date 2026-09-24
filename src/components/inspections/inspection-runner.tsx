@@ -215,7 +215,6 @@ export function InspectionRunner({
               {q.responseType === "PHOTO" ? (
                 <PhotoUploader
                   target={{ kind: "answer", inspectionId: inspection.id, questionId: q.id }}
-                  inspectionId={inspection.id}
                   photos={server?.evidences ?? []}
                   label="Agrega al menos una foto"
                 />
@@ -263,7 +262,6 @@ export function InspectionRunner({
                     <div className="mt-3">
                       <PhotoUploader
                         target={{ kind: "answer", inspectionId: inspection.id, questionId: q.id }}
-                        inspectionId={inspection.id}
                         photos={server?.evidences ?? []}
                         label="Fotos de la respuesta"
                       />
@@ -275,7 +273,6 @@ export function InspectionRunner({
               {showFinding && (
                 <div className="mt-3">
                   <FindingPanel
-                    key={finding?.id ?? "new"}
                     inspectionId={inspection.id}
                     answerId={(a?.answerId ?? server?.id)!}
                     questionText={q.text}

@@ -37,6 +37,8 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
   UPLOAD_MAX_MB: z.coerce.number().positive().default(10),
   APP_TIMEZONE: z.string().default("America/Bogota"),
+  // Secreto para /api/cron/run (cron externo). Vacío = endpoint deshabilitado.
+  CRON_SECRET: z.string().min(24, "CRON_SECRET debe tener al menos 24 caracteres").optional().or(z.literal("")),
 });
 
 export type Env = z.infer<typeof envSchema>;

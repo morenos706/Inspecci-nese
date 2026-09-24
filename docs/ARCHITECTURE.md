@@ -1,7 +1,7 @@
 # Arquitectura — Sistema de Inspecciones de Emergencia
 
 > Documento vivo. Describe las decisiones de arquitectura y el plan por fases.
-> Última actualización: Fase 3 (Inspecciones por zona).
+> Última actualización: Fase 4 (Hallazgos y planes de acción).
 
 ---
 
@@ -263,8 +263,8 @@ Elemento ──► Inspección ──► Respuesta ──► Hallazgo ──► 
 | 1 Fundación | Proyecto, Prisma + esquema completo, auth (login/logout/sesiones/recuperación), usuarios, roles/permisos, procesos, sedes/zonas, layout responsive, PWA manifest, auditoría base, Docker, seed | ✅ |
 | 2 Configuración | Tipos de elemento, plantillas y preguntas dinámicas (orden, tipos, reglas), inventario de elementos, programación | ✅ |
 | 3 Inspecciones | Mis inspecciones por zona, formulario dinámico móvil, autoguardado, hallazgos en línea, fotos (S3), finalización, resultado y reprogramación | ✅ |
-| 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre | ⏭ |
-| 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | |
+| 4 Hallazgos | Hallazgos, planes de acción, máquina de estados, evidencias, verificación y cierre, hallazgos automáticos por vencimiento | ✅ |
+| 5 Dashboard | Indicadores, gráficos, filtros por fecha/proceso/sede/tipo/responsable/estado | ⏭ |
 | 6 QR | Generación (PDF de etiquetas), lectura con cámara, apertura directa | |
 | 7 Notificaciones | In-app, correo, recordatorios, inspecciones vencidas y vencimientos de elementos (job programado) | |
 | 8 Reportes | Reportes filtrables, exportación CSV/Excel y PDF | |
@@ -370,6 +370,43 @@ botones subir/bajar (accesibles y usables en móvil).
   "ALERTA CRÍTICA" con el número de elementos vencidos, el inventario permite
   filtrar por vencimiento y las zonas del brigadista marcan los elementos
   vencidos. En la Fase 7 el mismo cálculo alimenta notificaciones y correos.
+
+## Hallazgos y planes de acción (Fase 4)
+
+- **Máquina de estados** en `src/lib/workflow.ts` (pura, con pruebas):
+  Pendiente → En proceso → Solucionado → Verificado → Cerrado; "Rechazar"
+  devuelve de Solucionado a En proceso.
+  - Iniciar / solucionar: el responsable del plan (`actions.update`) o quien
+    gestiona planes en su alcance (`actions.manage`).
+  - Solucionar exige comentario y al menos una evidencia (foto o PDF).
+  - Verificar / rechazar: `actions.verify` y **no** haber solucionado ese plan
+    (segregación de funciones, se guarda `solvedById`). Rechazar exige motivo.
+  - Cerrar: `actions.close`, solo planes verificados.
+- El **estado del hallazgo se deriva** de sus planes (`deriveFindingStatus`):
+  se cierra solo cuando todos sus planes están cerrados.
+- Bandejas con alcance aplicado en la consulta: planes "Asignados a mí" /
+  "Todos", filtros por estado, prioridad y vencidos; hallazgos por estado,
+  prioridad, origen, proceso y sede.
+- Gestión (`actions.manage`): agregar planes a un hallazgo, reasignar
+  responsable, cambiar acción o fecha límite (queda en el historial y se
+  notifica al nuevo responsable).
+- Cada cambio queda en `action_plan_events` (línea de tiempo) y en auditoría.
+
+## Hallazgos automáticos por vencimiento
+
+- Tarea programada `generateExpiryFindings()`: por cada elemento activo con
+  vencimiento expirado crea un hallazgo **crítico** (origen `EXPIRY`) y su plan
+  de acción con límite de 1 día, asignado al **responsable del elemento**
+  (si no hay: un gestor de planes del proceso; si no, un administrador), y le
+  notifica.
+- Idempotente: no crea otro si ya hay un hallazgo abierto por vencimiento
+  (automático o de inspección) y usa `dedupeKey` único por elemento + fecha.
+- Ejecución: programador interno al iniciar y cada hora
+  (`INTERNAL_SCHEDULER=true`, `src/instrumentation.ts`) y/o cron externo
+  `POST /api/cron/run` con `Authorization: Bearer CRON_SECRET` (recomendado con
+  varias réplicas).
+- Al marcar como solucionado un plan de vencimiento se exige la **nueva fecha
+  de vencimiento**, que se guarda en el elemento y apaga la alerta.
 
 ## Estrategia de archivos
 

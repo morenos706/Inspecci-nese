@@ -132,6 +132,7 @@ export default async function ElementPage({ params }: PageProps<"/inventory/[id]
             caption="Hallazgos abiertos"
             rows={element.findings}
             rowKey={(f) => f.id}
+            rowHref={(f) => `/findings/${f.id}`}
             empty={<EmptyState icon={AlertTriangle} title="Sin hallazgos abiertos" />}
             columns={[
               {

@@ -38,6 +38,15 @@ no cumple y se propone un hallazgo **crítico**; además el elemento queda
 marcado como **Vencido** y el Inicio muestra una **alerta crítica** aunque
 nadie lo inspeccione. Aviso de "por vencer" 30 días antes.
 
+**Fase 4 — Hallazgos y planes de acción ✅**: bandejas de hallazgos y planes
+("Asignados a mí" / "Todos") con filtros y vencidos, flujo Pendiente → En
+proceso → Solucionado → Verificado → Cerrado con permisos en el servidor,
+evidencias (foto o PDF) obligatorias para solucionar, quien soluciona no puede
+verificar, rechazo con motivo, reasignación, planes adicionales, historial y
+cierre automático del hallazgo. **Vencimientos → hallazgo crítico + plan de
+acción automático** asignado al responsable del elemento; al solucionarlo se
+registra la nueva fecha de vencimiento.
+
 ## Requisitos
 
 - Node.js ≥ 20.9 (recomendado 22)
@@ -156,6 +165,20 @@ planes de acción para probar las fases siguientes.
 Fotos en local: con `docker compose up -d` se guardan en MinIO (consola
 http://localhost:9001, usuario y clave `minioadmin`). Sin Docker usa
 `STORAGE_DRIVER=local` y se guardan en `.storage/`.
+
+## Cómo probar la Fase 4
+
+1. Arranca la app: en ~15 s el programador interno crea el **hallazgo crítico
+   automático** de `EXT-005` (recarga vencida) y su plan, asignado a Juan.
+2. Ingresa como `accion@inspecciones.local` (celular): **Planes** → plan de
+   `EXT-005` → *Iniciar gestión* → adjunta foto y/o PDF → *Marcar como
+   solucionado* con comentario y la **nueva fecha de vencimiento**.
+3. Como `admin@inspecciones.local`: la alerta crítica del Inicio desapareció.
+   Abre el plan → *Verificar* → *Cerrar*: el hallazgo queda cerrado.
+4. Como `responsable@inspecciones.local`: soluciona el plan de `EXT-023`; verás
+   que no puedes verificarlo tú mismo. El administrador puede *Devolver* con
+   motivo y el plan vuelve a "En proceso".
+5. Cron externo (opcional): `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/run`.
 
 ## Entornos y despliegue
 

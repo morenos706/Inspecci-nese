@@ -8,7 +8,6 @@ import { zId } from "@/lib/validation/form";
 import { parseForm, parseInput, runAction } from "@/server/actions/run-action";
 import { requirePermission } from "@/server/auth/current-user";
 import { serviceContext } from "@/server/services/context";
-import * as evidences from "@/server/services/evidences.service";
 import * as findings from "@/server/services/findings.service";
 import * as inspections from "@/server/services/inspections.service";
 
@@ -52,15 +51,6 @@ export async function deleteDraftFindingAction(findingId: string, inspectionId: 
     await findings.deleteDraftFinding(parseInput(zId, findingId), ctx);
     revalidatePath(`/inspections/${inspectionId}`);
     return { ok: true, message: "Hallazgo eliminado." };
-  });
-}
-
-export async function deleteEvidenceAction(evidenceId: string, inspectionId: string): Promise<ActionState> {
-  return runAction(async () => {
-    const ctx = await serviceContext(await requirePermission("evidences.upload"));
-    await evidences.deleteEvidence(parseInput(zId, evidenceId), ctx);
-    revalidatePath(`/inspections/${inspectionId}`);
-    return { ok: true, message: "Foto eliminada." };
   });
 }
 

@@ -93,7 +93,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const sections = visibleNavigation(user.permissions);
-  const mobileItems = sections.flatMap((s) => s.items).filter((i) => i.mobile);
+  // Barra inferior: máximo 4 accesos (+ Mi cuenta); el resto queda en el menú.
+  const mobileItems = sections
+    .flatMap((s) => s.items)
+    .filter((i) => i.mobile)
+    .slice(0, 4);
 
   // Bloquea el scroll del fondo mientras el menú móvil está abierto.
   useEffect(() => {

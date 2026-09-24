@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertOctagon, BatteryWarning, Boxes, Flame, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
+import { AlertOctagon, BatteryWarning, Boxes, ClipboardList, Flame, ShieldCheck, Timer, Building2, CalendarCheck, CalendarClock, KeyRound, MapPin, Network, Users } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { getReadScope, hasPermission, requirePageUser } from "@/server/auth/current-user";
 import { scheduleSummary } from "@/server/services/elements.service";
+import { myActionPlanSummary } from "@/server/services/action-plans.service";
 import { getFoundationSummary } from "@/server/services/dashboard.service";
 
 export const metadata = { title: "Inicio" };
@@ -15,9 +16,11 @@ export default async function DashboardPage() {
   const user = await requirePageUser();
   const isAdmin = hasPermission(user, "users.manage");
   const canSeeElements = getReadScope(user, "elements") !== null;
-  const [summary, schedule] = await Promise.all([
+  const hasPlans = getReadScope(user, "actions") !== null;
+  const [summary, schedule, plans] = await Promise.all([
     isAdmin ? getFoundationSummary() : null,
     canSeeElements ? scheduleSummary(user) : null,
+    hasPlans ? myActionPlanSummary(user) : null,
   ]);
   const firstName = user.name.split(" ")[0];
 
@@ -42,6 +45,19 @@ export default async function DashboardPage() {
             Ver elementos vencidos
           </Link>
         </Alert>
+      )}
+
+      {plans && (plans.open > 0 || plans.toVerify > 0 || plans.overdue > 0) && (
+        <section aria-label="Mis planes de acción" className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-subtle">Mis planes de acción</h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Abiertos" value={plans.open} icon={ClipboardList} href="/action-plans?view=mine" />
+            <StatCard label="Vencidos" value={plans.overdue} icon={Timer} tone="danger" href="/action-plans?view=mine&overdue=1" />
+            {user.permissions.has("actions.verify") && (
+              <StatCard label="Por verificar" value={plans.toVerify} icon={ShieldCheck} tone="warning" href="/action-plans?view=all&status=SOLVED" />
+            )}
+          </div>
+        </section>
       )}
 
       {schedule && (
@@ -76,13 +92,15 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      <Card>
-        <CardHeader title="Indicadores de hallazgos y cumplimiento" description="Disponible en la Fase 5 del proyecto." />
-        <CardBody className="text-sm text-subtle">
-          Aquí se mostrarán inspecciones realizadas, hallazgos abiertos y críticos, planes de acción, cumplimiento por
-          proceso y sede y la tendencia mensual.
-        </CardBody>
-      </Card>
+      {hasPermission(user, "dashboard.view") && (
+        <Card>
+          <CardHeader title="Indicadores de hallazgos y cumplimiento" description="Disponible en la Fase 5 del proyecto." />
+          <CardBody className="text-sm text-subtle">
+            Aquí se mostrarán inspecciones realizadas, hallazgos abiertos y críticos, planes de acción, cumplimiento por
+            proceso y sede y la tendencia mensual.
+          </CardBody>
+        </Card>
+      )}
     </>
   );
 }
