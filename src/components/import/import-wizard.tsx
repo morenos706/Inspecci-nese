@@ -16,11 +16,23 @@ interface RowIssue {
   errors: string[];
   warnings: string[];
 }
-interface Preview {
-  zones: RowIssue[];
-  elements: RowIssue[];
-  summary: { zonesCreate: number; zonesUpdate: number; elementsCreate: number; elementsUpdate: number; errors: number };
+interface Section {
+  key: string;
+  title: string;
+  rows: RowIssue[];
 }
+interface Summary {
+  create: number;
+  update: number;
+  errors: number;
+  rows: number;
+}
+interface Preview {
+  sections: Section[];
+  summary: Summary;
+}
+
+const count = (rows: RowIssue[], action: RowIssue["action"]) => rows.filter((r) => r.action === action).length;
 
 const ACTION = {
   create: { label: "Crear", tone: "success" as const },
@@ -80,7 +92,7 @@ export function ImportWizard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [done, setDone] = useState<Preview["summary"] | null>(null);
+  const [done, setDone] = useState<Section[] | null>(null);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
 
   async function send(mode: "preview" | "apply", f: File) {
@@ -94,7 +106,7 @@ export function ImportWizard() {
       if (!res.ok || !data.ok) throw new Error(data.message ?? "No se pudo procesar el archivo");
       if (mode === "preview") setPreview(data.preview);
       else {
-        setDone(data.summary);
+        setDone(preview?.sections ?? []);
         toast.success("Carga masiva completada");
       }
     } catch (error) {
@@ -110,10 +122,13 @@ export function ImportWizard() {
         <CardBody className="flex flex-col items-center gap-3 py-10 text-center">
           <CheckCircle2 className="h-12 w-12 text-success" aria-hidden />
           <p className="text-lg font-semibold">Carga completada</p>
-          <p className="text-sm text-muted">
-            Zonas: {done.zonesCreate} creadas, {done.zonesUpdate} actualizadas · Elementos: {done.elementsCreate} creados,{" "}
-            {done.elementsUpdate} actualizados.
-          </p>
+          <ul className="text-sm text-muted">
+            {done.map((sec) => (
+              <li key={sec.key}>
+                {sec.title}: {count(sec.rows, "create")} nuevos, {count(sec.rows, "update")} actualizados
+              </li>
+            ))}
+          </ul>
           <div className="flex gap-2">
             <Link href="/inventory" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
               Ver inventario
@@ -137,14 +152,17 @@ export function ImportWizard() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="1. Descarga la plantilla" description="Incluye instrucciones y listas desplegables con tus sedes, procesos, tipos y usuarios actuales." />
+        <CardHeader
+          title="1. Descarga la plantilla"
+          description="Incluye instrucciones, listas desplegables y hojas para sedes, procesos, tipos de equipo con sus preguntas, zonas e inventario."
+        />
         <CardBody>
           <a href="/api/import/template" className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary-soft px-4 text-sm font-medium text-primary hover:bg-blue-200">
             <Download className="h-4 w-4" aria-hidden /> Descargar plantilla Excel
           </a>
           <p className="mt-2 text-xs text-subtle">
-            Antes de cargar: crea en el sistema las sedes, los procesos, los tipos de elemento (con sus preguntas) y los usuarios responsables.
-            Las zonas pueden venir en el mismo archivo.
+            Llena solo las hojas que necesites: un solo archivo puede crear sedes, procesos, tipos de equipo con su cuestionario de
+            inspección, zonas y el inventario. Los responsables deben existir como usuarios.
           </p>
         </CardBody>
       </Card>
@@ -175,19 +193,19 @@ export function ImportWizard() {
 
           {preview && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {[
-                  ["Zonas nuevas", preview.summary.zonesCreate],
-                  ["Zonas a actualizar", preview.summary.zonesUpdate],
-                  ["Elementos nuevos", preview.summary.elementsCreate],
-                  ["Elementos a actualizar", preview.summary.elementsUpdate],
-                  ["Filas con error", preview.summary.errors],
-                ].map(([label, value]) => (
-                  <div key={label as string} className="rounded-lg border border-border p-3">
-                    <p className={`text-2xl font-semibold ${label === "Filas con error" && Number(value) > 0 ? "text-danger" : ""}`}>{value}</p>
-                    <p className="text-xs text-subtle">{label}</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {preview.sections.map((sec) => (
+                  <div key={sec.key} className="rounded-lg border border-border p-3">
+                    <p className="text-2xl font-semibold tabular-nums">{sec.rows.length}</p>
+                    <p className="text-xs text-subtle">
+                      {sec.title}: {count(sec.rows, "create")} nuevos · {count(sec.rows, "update")} a actualizar
+                    </p>
                   </div>
                 ))}
+                <div className="rounded-lg border border-border p-3">
+                  <p className={`text-2xl font-semibold tabular-nums ${preview.summary.errors > 0 ? "text-danger" : ""}`}>{preview.summary.errors}</p>
+                  <p className="text-xs text-subtle">Filas con error</p>
+                </div>
               </div>
               {preview.summary.errors > 0 ? (
                 <Alert tone="danger" title="Corrige las filas con error y vuelve a subir el archivo">
@@ -196,8 +214,9 @@ export function ImportWizard() {
               ) : (
                 <Alert tone="success" title="Todo listo para importar" />
               )}
-              <IssueTable title="Zonas" rows={preview.zones} />
-              <IssueTable title="Elementos" rows={preview.elements} />
+              {preview.sections.map((sec) => (
+                <IssueTable key={sec.key} title={sec.title} rows={sec.rows} />
+              ))}
             </div>
           )}
         </CardBody>
@@ -208,7 +227,7 @@ export function ImportWizard() {
           <CardHeader title="3. Importar" description="Crea o actualiza todo en una sola operación (si algo falla, no se guarda nada)." />
           <CardBody>
             <Button size="lg" loading={busy === "apply"} onClick={() => void send("apply", file)}>
-              <Upload className="h-4 w-4" aria-hidden /> Importar {preview.zones.length + preview.elements.length} fila(s)
+              <Upload className="h-4 w-4" aria-hidden /> Importar {preview.summary.rows} fila(s)
             </Button>
           </CardBody>
         </Card>

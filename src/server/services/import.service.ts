@@ -5,23 +5,34 @@ import type { ElementStatus, InspectionFrequency, Prisma } from "@/generated/pri
 import { audit } from "@/server/audit";
 import { AuthorizationError, DomainError } from "@/server/errors";
 import { expiryDateFromISO } from "@/lib/expiry";
-import {
-  cellText,
-  findByCodeOrName,
-  normalizeKey,
-  parseDateCell,
-  parseElementStatus,
-  parseFrequency,
-} from "@/lib/import-parsing";
-import { ELEMENT_STATUS_LABELS } from "@/lib/labels";
+import { cellText, findByCodeOrName, normalizeKey, parseDateCell, parseElementStatus, parseFrequency } from "@/lib/import-parsing";
+import { RESPONSE_TYPE_IMPORT_LABELS } from "@/lib/import-questions";
+import { ELEMENT_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/labels";
 import { FREQUENCIES, FREQUENCY_LABELS, scheduleFields } from "@/lib/scheduling";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { generateQrToken } from "@/server/services/elements.service";
+import {
+  analyzeCatalog,
+  applyCatalog,
+  PROCESS_COLUMNS,
+  QUESTION_COLUMNS,
+  SITE_COLUMNS,
+  TYPE_COLUMNS,
+} from "@/server/services/import-catalog";
+import {
+  addDropdown,
+  addTemplateSheet,
+  CODE_RE,
+  isExampleRow,
+  readSheet,
+  type ImportSection,
+  type RowIssue,
+} from "@/server/services/import-sheets";
+
+export type { ImportSection, RowIssue } from "@/server/services/import-sheets";
 
 export const MAX_IMPORT_ROWS = 5000;
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
-
-const CODE_RE = /^[A-Z0-9_-]+$/;
 
 // Encabezados de la plantilla (el * indica obligatorio). El orden es el de las columnas.
 const ZONE_COLUMNS = [
@@ -71,67 +82,85 @@ async function catalogs() {
   return { sites, processes, types, users, zones };
 }
 
-/** Plantilla Excel con instrucciones, hojas Zonas y Elementos, y listas desplegables con los valores válidos. */
+/**
+ * Plantilla Excel: instrucciones, hojas de catálogo opcionales (Sedes,
+ * Procesos, Tipos, Preguntas), Zonas y Elementos, con listas desplegables.
+ */
 export async function buildImportTemplate(): Promise<Buffer> {
   const { sites, processes, types, users } = await catalogs();
   const wb = new ExcelJS.Workbook();
   wb.creator = "Inspecciones de Emergencia";
 
   const help = wb.addWorksheet("Instrucciones");
-  help.columns = [{ width: 110 }];
+  help.columns = [{ width: 120 }];
   [
-    "CARGA MASIVA DE ZONAS E INVENTARIO",
+    "CARGA MASIVA: SEDES, PROCESOS, TIPOS DE EQUIPO, PREGUNTAS, ZONAS E INVENTARIO",
     "",
-    "1. Llena la hoja «Zonas» (opcional) y la hoja «Elementos». No cambies los encabezados. Las columnas con * son obligatorias.",
-    "2. Sede, Proceso y Tipo deben existir en el sistema: usa las listas desplegables (hoja «Listas»). Se aceptan el código o el nombre.",
-    "3. Zona: código o nombre de una zona de esa sede (existente o creada en la hoja «Zonas» de este mismo archivo).",
-    "4. Responsable: correo de un usuario activo del sistema.",
-    "5. Frecuencia: Diaria, Semanal, Quincenal, Mensual, Bimestral, Trimestral, Semestral, Anual o Personalizada (con «Días»). Vacía = la del tipo.",
-    "6. Fechas en formato dd/mm/aaaa. Si hay «Última inspección», la próxima se calcula sola; si no, se usa «Próxima inspección» (o hoy).",
-    "7. Vencimiento: fecha de vencimiento del elemento (p. ej. recarga del extintor). Al pasar genera alerta crítica y plan de acción.",
-    "8. Si el código ya existe, la fila ACTUALIZA el elemento; si no, lo CREA. Nada se borra.",
-    "9. Sube el archivo en el sistema: primero verás una vista previa con los errores por fila; solo se importa cuando todo está correcto.",
+    "Llena solo las hojas que necesites (las vacías se ignoran). No cambies los encabezados. Las columnas con * son obligatorias.",
+    "Se aplican en este orden: Sedes → Procesos → Tipos → Preguntas → Zonas → Elementos, así un solo archivo puede montar toda la operación.",
+    "",
+    "SEDES / PROCESOS / TIPOS: si el código ya existe se ACTUALIZA; si no, se CREA.",
+    "TIPOS: Prefijo = inicio sugerido del código de los elementos (EXT → EXT-001). Frecuencia por defecto de inspección (vacía = Mensual).",
+    "",
+    "PREGUNTAS: el cuestionario de inspección de cada tipo, en orden. Para cada tipo que aparezca en la hoja, el archivo define el cuestionario completo:",
+    "   · Si el texto de la pregunta ya existe en ese tipo, se actualiza; si no, se crea.",
+    "   · Las preguntas actuales del tipo que NO estén en el archivo se desactivan (sus respuestas anteriores se conservan).",
+    "   Tipo de respuesta: Sí/No · Sí/No/No aplica · Cumple/No cumple · Número · Fecha · Selección · Selección múltiple · Texto · Foto.",
+    "   Opciones (solo Selección): separadas por /  (ej.: Bueno / Malo).",
+    "   No cumple si: Sí/No → «No» (por defecto) o «Sí» para preguntas negativas (¿Hay fugas?). Selección → las opciones que no cumplen (ej.: Malo).",
+    "   Número: Mínimo / Máximo aceptables (ej.: cantidades de un botiquín con Mínimo 1).",
+    "   Es fecha de vencimiento = Sí (solo Fecha): la respuesta actualiza el vencimiento del elemento; al pasar genera alerta crítica y plan de acción.",
+    "   Obligatoria y Genera hallazgo: Sí / No (vacío = Sí). Prioridad del hallazgo: Baja, Media, Alta o Crítica (vacío = Media).",
+    "",
+    "ZONAS: código o nombre de una sede existente o creada en la hoja «Sedes».",
+    "ELEMENTOS: Sede, Proceso y Tipo existentes o creados en este mismo archivo (se acepta código o nombre). Zona: de esa sede.",
+    "   Responsable: correo de un usuario activo. Frecuencia vacía = la del tipo. Fechas dd/mm/aaaa.",
+    "   Con «Última inspección» la próxima se calcula sola; si no, se usa «Próxima inspección» (o hoy).",
+    "   Si el código ya existe, la fila ACTUALIZA el elemento; si no, lo CREA. Nada se borra.",
+    "",
+    "Al subir el archivo verás una vista previa con los errores por fila; solo se importa cuando todo está correcto y todo se guarda en una sola operación.",
   ].forEach((line, i) => {
     const row = help.addRow([line]);
     if (i === 0) row.font = { bold: true, size: 14 };
   });
 
-  const lists = wb.addWorksheet("Listas");
-  const listColumns: [string, string[]][] = [
-    ["Sedes", sites.map((s) => s.name)],
-    ["Procesos", processes.map((p) => p.name)],
-    ["Tipos", types.map((t) => t.name)],
-    ["Responsables (correo)", users.map((u) => u.email)],
-    ["Frecuencias", FREQUENCIES.map((f) => FREQUENCY_LABELS[f])],
-    ["Estados", Object.values(ELEMENT_STATUS_LABELS)],
-  ];
-  listColumns.forEach(([title, values], c) => {
-    const col = lists.getColumn(c + 1);
-    col.width = 30;
-    lists.getCell(1, c + 1).value = title;
-    lists.getCell(1, c + 1).font = { bold: true };
-    values.forEach((v, r) => (lists.getCell(r + 2, c + 1).value = v));
+  addTemplateSheet(wb, "Sedes", SITE_COLUMNS, {
+    codigo: "PRINCIPAL",
+    nombre: sites[0]?.name ?? "Sede Principal",
+    ciudad: "Medellín",
+    direccion: "Fila de ejemplo: bórrala o reemplázala",
   });
-  const listRange = (c: number, count: number) =>
-    `Listas!$${String.fromCharCode(65 + c)}$2:$${String.fromCharCode(65 + c)}$${Math.max(2, count + 1)}`;
-
-  function sheet<K extends string>(name: string, columns: readonly { key: K; header: string; width: number }[], example: Partial<Record<K, string>>) {
-    const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
-    ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width }));
-    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
-    ws.addRow(example);
-    ws.getRow(2).font = { italic: true, color: { argb: "FF64748B" } };
-    return ws;
-  }
-
-  const zonesWs = sheet("Zonas", ZONE_COLUMNS, {
+  addTemplateSheet(wb, "Procesos", PROCESS_COLUMNS, {
+    codigo: "MANT",
+    nombre: "Mantenimiento",
+    descripcion: "Fila de ejemplo: bórrala o reemplázala",
+  });
+  const typesWs = addTemplateSheet(wb, "Tipos", TYPE_COLUMNS, {
+    codigo: "EXT",
+    nombre: "Extintor",
+    prefijo: "EXT",
+    frecuencia: "Mensual",
+    descripcion: "Fila de ejemplo: bórrala o reemplázala",
+  });
+  const questionsWs = addTemplateSheet(wb, "Preguntas", QUESTION_COLUMNS, {
+    tipo: "Extintor",
+    orden: 1,
+    pregunta: "¿El manómetro indica presión adecuada?",
+    respuesta: "Sí/No/No aplica",
+    "no cumple si": "No",
+    obligatoria: "Sí",
+    "genera hallazgo": "Sí",
+    prioridad: "Alta",
+    "es vencimiento": "No",
+    ayuda: "Fila de ejemplo: bórrala o reemplázala",
+  });
+  const zonesWs = addTemplateSheet(wb, "Zonas", ZONE_COLUMNS, {
     sede: sites[0]?.name ?? "Sede Principal",
     codigo: "Z1",
     nombre: "Zona 1 – Bodega",
     descripcion: "Fila de ejemplo: bórrala o reemplázala",
   });
-  const elementsWs = sheet("Elementos", ELEMENT_COLUMNS, {
+  const elementsWs = addTemplateSheet(wb, "Elementos", ELEMENT_COLUMNS, {
     codigo: "EXT-100",
     tipo: types[0]?.name ?? "Extintor",
     nombre: "Extintor ABC 20 lb",
@@ -148,20 +177,39 @@ export async function buildImportTemplate(): Promise<Buffer> {
     descripcion: "Fila de ejemplo: bórrala o reemplázala",
   });
 
-  // Listas desplegables (filas 2..1000)
-  const dropdown = (ws: ExcelJS.Worksheet, colKey: string, formula: string) => {
-    const col = ws.getColumn(colKey);
-    for (let r = 2; r <= 1000; r++) {
-      ws.getCell(r, col.number).dataValidation = { type: "list", allowBlank: true, formulae: [formula], showErrorMessage: false };
-    }
-  };
-  dropdown(zonesWs, "sede", listRange(0, sites.length));
-  dropdown(elementsWs, "sede", listRange(0, sites.length));
-  dropdown(elementsWs, "proceso", listRange(1, processes.length));
-  dropdown(elementsWs, "tipo", listRange(2, types.length));
-  dropdown(elementsWs, "responsable", listRange(3, users.length));
-  dropdown(elementsWs, "frecuencia", listRange(4, FREQUENCIES.length));
-  dropdown(elementsWs, "estado", listRange(5, 4));
+  const lists = wb.addWorksheet("Listas");
+  const listColumns: [string, string[]][] = [
+    ["Sedes", sites.map((s) => s.name)],
+    ["Procesos", processes.map((p) => p.name)],
+    ["Tipos", types.map((t) => t.name)],
+    ["Responsables (correo)", users.map((u) => u.email)],
+    ["Frecuencias", FREQUENCIES.map((f) => FREQUENCY_LABELS[f])],
+    ["Estados", Object.values(ELEMENT_STATUS_LABELS)],
+    ["Tipos de respuesta", Object.values(RESPONSE_TYPE_IMPORT_LABELS)],
+    ["Sí / No", ["Sí", "No"]],
+    ["Prioridades", Object.values(PRIORITY_LABELS)],
+  ];
+  listColumns.forEach(([title, values], c) => {
+    const col = lists.getColumn(c + 1);
+    col.width = 30;
+    lists.getCell(1, c + 1).value = title;
+    lists.getCell(1, c + 1).font = { bold: true };
+    values.forEach((v, r) => (lists.getCell(r + 2, c + 1).value = v));
+  });
+  const listRange = (c: number, count: number) =>
+    `Listas!$${String.fromCharCode(65 + c)}$2:$${String.fromCharCode(65 + c)}$${Math.max(2, count + 1)}`;
+
+  addDropdown(zonesWs, "sede", listRange(0, sites.length));
+  addDropdown(elementsWs, "sede", listRange(0, sites.length));
+  addDropdown(elementsWs, "proceso", listRange(1, processes.length));
+  addDropdown(elementsWs, "tipo", listRange(2, types.length));
+  addDropdown(elementsWs, "responsable", listRange(3, users.length));
+  addDropdown(elementsWs, "frecuencia", listRange(4, FREQUENCIES.length));
+  addDropdown(elementsWs, "estado", listRange(5, 4));
+  addDropdown(typesWs, "frecuencia", listRange(4, FREQUENCIES.length));
+  addDropdown(questionsWs, "respuesta", listRange(6, Object.keys(RESPONSE_TYPE_IMPORT_LABELS).length));
+  for (const key of ["obligatoria", "genera hallazgo", "es vencimiento"]) addDropdown(questionsWs, key, listRange(7, 2));
+  addDropdown(questionsWs, "prioridad", listRange(8, Object.keys(PRIORITY_LABELS).length));
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -169,14 +217,6 @@ export async function buildImportTemplate(): Promise<Buffer> {
 // ---------------------------------------------------------------------------
 // Lectura y validación
 // ---------------------------------------------------------------------------
-
-export interface RowIssue {
-  row: number;
-  code: string;
-  action: "create" | "update" | "error";
-  errors: string[];
-  warnings: string[];
-}
 
 interface ZonePlan {
   row: number;
@@ -211,37 +251,9 @@ interface ElementPlan {
 }
 
 export interface ImportPreview {
-  zones: RowIssue[];
-  elements: RowIssue[];
-  summary: { zonesCreate: number; zonesUpdate: number; elementsCreate: number; elementsUpdate: number; errors: number };
+  sections: ImportSection[];
+  summary: { create: number; update: number; errors: number; rows: number };
 }
-
-function readSheet<K extends string>(wb: ExcelJS.Workbook, name: string, columns: readonly { key: K; header: string }[]) {
-  const ws = wb.worksheets.find((w) => normalizeKey(w.name) === normalizeKey(name));
-  if (!ws) return [];
-  const headerRow = ws.getRow(1);
-  const map = new Map<number, K>();
-  headerRow.eachCell((cell, col) => {
-    const key = normalizeKey(cellText(cell.value)).replace(/\s*\(.*$/, "");
-    const match = columns.find((c) => normalizeKey(c.header).replace(/\s*\(.*$/, "") === key || c.key === key);
-    if (match) map.set(col, match.key);
-  });
-  const rows: { row: number; values: Record<K, unknown> }[] = [];
-  ws.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    const values = {} as Record<K, unknown>;
-    let any = false;
-    map.forEach((key, col) => {
-      const v = row.getCell(col).value;
-      values[key] = v;
-      if (cellText(v) !== "") any = true;
-    });
-    if (any) rows.push({ row: rowNumber, values });
-  });
-  return rows;
-}
-
-const isExampleRow = (text: unknown) => normalizeKey(cellText(text)).startsWith("fila de ejemplo");
 
 export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
   const wb = new ExcelJS.Workbook();
@@ -252,14 +264,19 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
   }
   const zoneRows = readSheet(wb, "Zonas", ZONE_COLUMNS).filter((r) => !isExampleRow(r.values.descripcion));
   const elementRows = readSheet(wb, "Elementos", ELEMENT_COLUMNS).filter((r) => !isExampleRow(r.values.descripcion));
-  if (zoneRows.length + elementRows.length === 0) {
-    throw new DomainError("El archivo no tiene filas en las hojas «Zonas» o «Elementos».");
+
+  const base = await catalogs();
+  const catalog = await analyzeCatalog(wb, base);
+  // Sedes, procesos y tipos existentes + los que crea este mismo archivo.
+  const cat = { ...base, ...catalog.catalogs };
+  const catalogRows = Object.values(catalog.sections).reduce((a, rows) => a + rows.length, 0);
+  const totalRows = catalogRows + zoneRows.length + elementRows.length;
+  if (totalRows === 0) {
+    throw new DomainError("El archivo no tiene filas para importar (hojas Sedes, Procesos, Tipos, Preguntas, Zonas o Elementos).");
   }
-  if (zoneRows.length + elementRows.length > MAX_IMPORT_ROWS) {
+  if (totalRows > MAX_IMPORT_ROWS) {
     throw new DomainError(`Máximo ${MAX_IMPORT_ROWS} filas por archivo. Divide el archivo en partes.`);
   }
-
-  const cat = await catalogs();
   const text = (v: unknown) => cellText(v);
 
   // ---- Zonas
@@ -404,19 +421,33 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
     }
   }
 
-  const count = (list: RowIssue[], action: RowIssue["action"]) => list.filter((r) => r.action === action).length;
+  const sections: ImportSection[] = (
+    [
+      { key: "sites", title: "Sedes", rows: catalog.sections.sites },
+      { key: "processes", title: "Procesos", rows: catalog.sections.processes },
+      { key: "types", title: "Tipos", rows: catalog.sections.types },
+      { key: "questions", title: "Preguntas", rows: catalog.sections.questions },
+      { key: "zones", title: "Zonas", rows: zoneIssues },
+      { key: "elements", title: "Elementos", rows: elementIssues },
+    ] satisfies ImportSection[]
+  ).filter((sec) => sec.rows.length > 0);
+  const all = sections.flatMap((sec) => sec.rows);
   const preview: ImportPreview = {
-    zones: zoneIssues,
-    elements: elementIssues,
+    sections,
     summary: {
-      zonesCreate: count(zoneIssues, "create"),
-      zonesUpdate: count(zoneIssues, "update"),
-      elementsCreate: count(elementIssues, "create"),
-      elementsUpdate: count(elementIssues, "update"),
-      errors: count(zoneIssues, "error") + count(elementIssues, "error"),
+      create: all.filter((r) => r.action === "create").length,
+      update: all.filter((r) => r.action === "update").length,
+      errors: all.filter((r) => r.action === "error").length,
+      rows: all.length,
     },
   };
-  return { preview, zonePlans, elementPlans, withInspections: new Set(existingElements.filter((e) => e._count.inspections > 0).map((e) => e.id)) };
+  return {
+    preview,
+    catalogPlans: catalog.plans,
+    zonePlans,
+    elementPlans,
+    withInspections: new Set(existingElements.filter((e) => e._count.inspections > 0).map((e) => e.id)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,35 +455,42 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
 // ---------------------------------------------------------------------------
 
 export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceContext) {
-  const { preview, zonePlans, elementPlans, withInspections } = await analyzeImport(buffer);
+  const { preview, catalogPlans, zonePlans, elementPlans, withInspections } = await analyzeImport(buffer);
   if (preview.summary.errors > 0) {
     throw new DomainError(`El archivo tiene ${preview.summary.errors} fila(s) con errores. Corrígelas y vuelve a cargarlo.`);
   }
-  if (zonePlans.length > 0 && !ctx.user.permissions.has("sites.manage")) {
-    throw new AuthorizationError("No tienes permiso para crear o modificar zonas.");
-  }
+  const need = (condition: boolean, permission: Parameters<typeof ctx.user.permissions.has>[0], what: string) => {
+    if (condition && !ctx.user.permissions.has(permission)) throw new AuthorizationError(`No tienes permiso para crear o modificar ${what}.`);
+  };
+  need(zonePlans.length > 0 || catalogPlans.sites.length > 0, "sites.manage", "sedes y zonas");
+  need(catalogPlans.processes.length > 0, "processes.manage", "procesos");
+  need(catalogPlans.types.length > 0 || catalogPlans.questionSets.length > 0, "element_types.manage", "tipos de elemento y preguntas");
 
   await db.$transaction(
     async (tx) => {
-      // 1. Zonas (upsert por sede + código)
+      // 1. Catálogo: sedes, procesos, tipos y preguntas (IDs virtuales → reales)
+      const ids = await applyCatalog(tx, catalogPlans);
+      const real = (id: string) => ids.get(id) ?? id;
+
+      // 2. Zonas (upsert por sede + código)
       const zoneIds = new Map<string, string>();
       for (const z of zonePlans) {
         const saved = z.existingId
           ? await tx.zone.update({ where: { id: z.existingId }, data: { name: z.name, description: z.description, active: true, deletedAt: null } })
-          : await tx.zone.create({ data: { siteId: z.siteId, code: z.code, name: z.name, description: z.description } });
+          : await tx.zone.create({ data: { siteId: real(z.siteId), code: z.code, name: z.name, description: z.description } });
         zoneIds.set(`${z.siteId}:${z.code}`, saved.id);
       }
 
-      // 2. Elementos (upsert por código)
+      // 3. Elementos (upsert por código)
       for (const { data, existingId } of elementPlans) {
         const zoneId = !data.zoneRef ? null : "id" in data.zoneRef ? data.zoneRef.id : zoneIds.get(`${data.zoneRef.siteId}:${data.zoneRef.code}`)!;
         const noon = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00.000Z`) : null);
         const base: Prisma.ElementUncheckedUpdateInput = {
-          elementTypeId: data.elementTypeId,
+          elementTypeId: real(data.elementTypeId),
           name: data.name,
           description: data.description,
-          processId: data.processId,
-          siteId: data.siteId,
+          processId: real(data.processId),
+          siteId: real(data.siteId),
           zoneId,
           location: data.location,
           responsibleId: data.responsibleId,
@@ -505,6 +543,7 @@ export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceCont
           entityType: "Element",
           after: {
             ...preview.summary,
+            sections: Object.fromEntries(preview.sections.map((sec) => [sec.key, sec.rows.length])),
             zoneCodes: zonePlans.map((z) => z.code),
             elementCodes: elementPlans.map((e) => e.data.code),
           },

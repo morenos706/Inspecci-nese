@@ -448,6 +448,16 @@ botones subir/bajar (accesibles y usables en móvil).
   con ajuste automático de ancho) o Excel (`exceljs`). Permiso
   `reports.export`; el alcance por proceso se aplica igual que en el
   dashboard.
+- **Catálogo en la carga masiva** (`import-catalog.ts`): hojas opcionales
+  Sedes, Procesos, Tipos y Preguntas, aplicadas antes de Zonas y Elementos en
+  la misma transacción. Lo nuevo recibe un ID virtual (`new:<tipo>:<código>`)
+  que se traduce al real al aplicar. Cada fila de *Preguntas* pasa por
+  `questionRowToForm` (`src/lib/import-questions.ts`) y luego por el mismo
+  `questionSchema` del editor; para cada tipo presente el archivo define el
+  cuestionario completo (coincidencia por texto; las que faltan se desactivan,
+  no se borran; no se cambia el tipo de respuesta de una pregunta ya
+  respondida). Permisos: `sites.manage`, `processes.manage`,
+  `element_types.manage` según las hojas usadas.
 - **Carga masiva** (`import.service.ts`): plantilla con validaciones de datos,
   `analyzeImport` (vista previa: crear/actualizar/error por fila) y
   `applyImport` (una transacción, zonas primero, `scheduleFields`, auditoría

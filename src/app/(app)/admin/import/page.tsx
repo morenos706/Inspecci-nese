@@ -9,8 +9,8 @@ export default async function ImportPage() {
   return (
     <>
       <PageHeader
-        title="Carga masiva de zonas e inventario"
-        description="Crea o actualiza zonas y elementos desde un archivo Excel."
+        title="Carga masiva"
+        description="Crea o actualiza sedes, procesos, tipos de equipo con sus preguntas, zonas e inventario desde un archivo Excel."
         back={{ href: "/inventory", label: "Inventario" }}
       />
       <ImportWizard />

@@ -64,9 +64,13 @@ gestores), elemento por vencer (30 y 7 días) y resumen diario de inspecciones
 vencidas por zona.
 
 **Carga masiva, reportes y QR ✅** (Fases 6 y 8):
-- **Carga masiva** (*Administración → Carga masiva*): plantilla Excel con listas
-  desplegables (zonas y elementos), vista previa con errores por fila y
-  aplicación en una sola transacción (crea o actualiza por código).
+- **Carga masiva** (*Configuración → Carga masiva*): plantilla Excel con listas
+  desplegables y hojas **Sedes, Procesos, Tipos, Preguntas, Zonas y
+  Elementos** (todas opcionales), vista previa con errores por fila y
+  aplicación en una sola transacción (crea o actualiza por código). La hoja
+  *Preguntas* define el cuestionario completo de cada tipo: Sí/No, Sí/No/No
+  aplica, Número con mínimo/máximo, Fecha (incluida la de vencimiento),
+  Selección con opciones que no cumplen, Texto y Foto.
 - **Reportes** (*Reportes*): inspecciones, hallazgos, planes de acción,
   inventario y cumplimiento en PDF o Excel, con los mismos filtros del
   dashboard. Cada inspección tiene su **Informe PDF** (respuestas, hallazgos,
