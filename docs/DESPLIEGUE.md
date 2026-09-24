@@ -80,6 +80,39 @@ simultáneos. Las fotos se guardan comprimidas (~0,5 MB c/u).
 En el panel DNS de tu dominio crea un registro **A**:
 `inspecciones` → `IP pública del servidor`. Espera unos minutos a que propague.
 
+### 2.2-bis Crear el servidor en AWS EC2 (si usas Amazon Web Services)
+
+En **EC2 → Lanzar una instancia**:
+
+| Sección | Valor |
+|---|---|
+| Nombre | `Inspecciones` |
+| Imagen (AMI) | **Ubuntu Server 24.04 LTS** (64 bits x86). Los comandos de esta guía son para Ubuntu |
+| Tipo de instancia | **t3.medium** (2 vCPU, 4 GB). Mínimo aceptable: t3.small (2 GB) + memoria swap (ver 2.3). **No uses t3.micro** (1 GB): no alcanza para compilar la aplicación |
+| Par de claves | *Crear un nuevo par de claves* → tipo ED25519, formato `.pem` → se descarga: guárdalo, es la llave del servidor |
+| Configuración de red | *Permitir tráfico SSH* desde **Mi IP**; marcar **Permitir tráfico HTTPS** y **Permitir tráfico HTTP** desde Internet |
+| Almacenamiento | **30 GiB gp3** (8 GiB no alcanza para Docker + fotos) |
+
+Después de lanzarla:
+
+1. **IP fija**: EC2 → *Direcciones IP elásticas* → *Asignar* → *Asociar* a la
+   instancia. Sin esto la IP cambia cada vez que se detiene el servidor.
+2. **Dominio**: crea el registro **A** del subdominio hacia la IP elástica.
+   ¿Aún no tienes dominio? Para el piloto puedes usar
+   `DOMAIN=3-15-20-1.sslip.io` (tu IP elástica con guiones): resuelve solo a
+   esa IP y Caddy obtiene el certificado HTTPS igual.
+3. **Conectarte** (Mac/Linux; en Windows usa PowerShell):
+   ```bash
+   chmod 400 ~/Downloads/inspecciones.pem
+   ssh -i ~/Downloads/inspecciones.pem ubuntu@IP_ELASTICA
+   ```
+   También puedes usar el botón **Conectar → EC2 Instance Connect** de la consola.
+4. **Control de costos**: en *Billing → Budgets* crea un presupuesto mensual
+   con alerta por correo.
+
+En AWS el cortafuegos es el *grupo de seguridad* (puertos 22, 80 y 443); el
+paso de `ufw` de la sección siguiente es opcional.
+
 ### 2.3 Preparar el servidor (una sola vez)
 
 Conéctate por SSH (`ssh usuario@IP`) y ejecuta:
@@ -89,8 +122,12 @@ Conéctate por SSH (`ssh usuario@IP`) y ejecuta:
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER && newgrp docker
 
-# Cortafuegos: solo SSH, HTTP y HTTPS
+# Cortafuegos: solo SSH, HTTP y HTTPS (en AWS ya lo hace el grupo de seguridad)
 sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
+
+# Memoria swap de 4 GB (necesaria con 2 GB de RAM; recomendable siempre para compilar)
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 # Código
 git clone https://github.com/morenos706/Inspecci-nese.git
