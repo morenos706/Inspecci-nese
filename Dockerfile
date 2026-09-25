@@ -9,7 +9,6 @@ ARG NODE_VERSION=22-alpine
 # ---- Dependencias
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 # postinstall ejecuta `prisma generate` (no necesita conexión a BD)

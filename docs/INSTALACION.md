@@ -4,6 +4,10 @@ Guía para el equipo de TI. Instala el **Sistema de Inspecciones de Equipos de
 Emergencia** en un servidor propio (físico o virtual), sin depender de ninguna
 nube. Tiempo estimado: **1 hora** con el servidor listo.
 
+> Versión 1.0.0 · verificada instalando este mismo paquete con Docker: base de
+> datos, migraciones, cuenta única de Super Administrador, HTTPS con certificado
+> propio, correo, carga masiva, fotos, respaldo y restauración.
+>
 > Resumen técnico: aplicación web en **TypeScript** (Next.js 16 sobre Node.js 22),
 > base de datos **PostgreSQL 16**, empaquetada en **4 contenedores Docker**.
 > Todo el software es de código abierto, sin licencias.
@@ -44,7 +48,7 @@ nube. Tiempo estimado: **1 hora** con el servidor listo.
 | Disco | 40 GB | 100 GB SSD (fotos: ~5 GB por año con 800 equipos) |
 | Software | Docker Engine 24+ con el plugin Docker Compose v2 | — |
 | Red (entrada) | 443/TCP (y 80/TCP si se usa Let's Encrypt) desde la red de los usuarios | — |
-| Red (salida) | SMTP (587) hacia el servidor de correo | Durante la instalación: acceso a Docker Hub y npm (o usar la instalación sin internet, §9) |
+| Red (salida) | SMTP (587) hacia el servidor de correo | Durante la instalación: `registry-1.docker.io` (imágenes) y `registry.npmjs.org` (dependencias), o usar la instalación sin internet (§9) |
 | Nombre y certificado | Un nombre DNS (ej.: `inspecciones.empresa.com`) y certificado HTTPS válido | — |
 
 > **Servidores Windows**: crear una máquina virtual Linux (Hyper-V o VMware) y
@@ -146,6 +150,7 @@ location / {
 ```
 
 Restrinja con el firewall el acceso al puerto 3000 para que solo lo alcance el proxy.
+Si antes se usó la opción A o B, detenga Caddy una vez: `docker compose -f docker-compose.prod.yml stop caddy`.
 
 ## 6. Arrancar
 
@@ -246,6 +251,7 @@ contenido y servidos solo a usuarios autorizados, encabezados de seguridad
 | Síntoma | Causa y solución |
 |---|---|
 | `required variable … is missing a value` | Falta el acceso directo: `ln -sf .env.production .env` |
+| `429 Too Many Requests` al descargar imágenes | Límite de descargas anónimas de Docker Hub: inicie sesión (`docker login`) o use el espejo de la empresa |
 | `Configuración de entorno inválida` en `logs app` | Falta o está mal una variable de `.env.production` |
 | El sitio no abre con HTTPS (opción A) | El DNS debe apuntar al servidor y los puertos 80/443 estar abiertos desde internet; ver `$COMPOSE logs caddy` |
 | El navegador marca el certificado como no seguro (opción B) | El `.crt` debe incluir los intermedios y la CA debe estar instalada en los equipos/celulares |
