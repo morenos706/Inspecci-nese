@@ -270,6 +270,30 @@ Si `docker volume ls` muestra otro prefijo (depende del nombre de la carpeta),
 usa esos nombres en el paso 3. Luego ingresa como administrador, carga sedes,
 tipos, preguntas, zonas e inventario en **Carga masiva** y crea los usuarios.
 
+### 2.11 Borrar solo los datos (conservar usuarios)
+
+Deja en cero el inventario, las zonas, los tipos con sus preguntas, las
+inspecciones, los hallazgos, los planes, las fotos y las notificaciones.
+**Se conservan** los usuarios con sus roles y contraseñas, las sedes, los
+procesos (con sus usuarios asignados) y la auditoría. La numeración vuelve a
+#000001. **No se puede deshacer.**
+
+```bash
+cd ~/Inspecci-nese
+git pull
+# 1. Respaldo por si acaso
+mkdir -p backups
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U inspecciones -Fc inspecciones > backups/antes-de-borrar-$(date +%F).dump
+# 2. Borrar los datos (conserva usuarios)
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U inspecciones -d inspecciones -v ON_ERROR_STOP=1 < scripts/reset-datos.sql
+# 3. Borrar las fotos
+docker compose -f docker-compose.prod.yml exec app sh -c 'rm -rf /app/storage/*'
+```
+
+Al final se muestra un conteo: usuarios, sedes y procesos se mantienen;
+elementos, inspecciones y hallazgos quedan en 0. Luego sube el inventario en
+**Carga masiva**.
+
 ## Etapa 3 — Ponerlo en marcha en la empresa
 
 ### 3.1 Configuración inicial (administrador, ~1 día)
