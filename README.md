@@ -77,7 +77,8 @@ vencidas por zona.
   SEDE-TIPO-consecutivo (PRO-EXT-024, con el prefijo del tipo); nadie lo
   escribe ni lo edita (el servidor ignora cualquier código enviado). Si el
   elemento cambia de sede, zona o tipo se recodifica (PRO-EXT-023 →
-  COM-EXT-023); el QR sigue funcionando. En la carga masiva, «Código» vacío =
+  COM-EXT-023) conservando siempre su número (si ya existe, COM-EXT-023-2); el
+  QR sigue funcionando. En la carga masiva, «Código» vacío =
   automático.
 - **Correos** (*Administración → Correos*): diseño (empresa, colores, logo,
   pie) y plantillas HTML de notificaciones, bienvenida y restablecimiento, con

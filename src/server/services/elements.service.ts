@@ -283,8 +283,8 @@ async function createElementOnce(input: ElementInput, ctx: ServiceContext) {
 
 /**
  * El código no se edita a mano: si el elemento cambia de sede, zona o tipo,
- * se actualiza el segmento correspondiente (PRO-EXT-023 → COM-EXT-023). Si ese
- * código ya existe, se asigna el siguiente consecutivo de la nueva sede y tipo.
+ * se actualiza el segmento correspondiente (PRO-EXT-023 → COM-EXT-023): el
+ * número se conserva siempre (si el código ya existe se agrega un sufijo -2).
  * El QR sigue siendo válido (usa un token propio), pero la etiqueta impresa
  * muestra el código anterior.
  */
@@ -319,15 +319,10 @@ async function recodeOnMove(
     toType: typeChanged ? prefix(input.elementTypeId) : null,
   });
   if (proposed === before.code) return before.code;
-  const taken = await db.element.findFirst({ where: { code: proposed, id: { not: input.id } }, select: { id: true } });
-  if (!taken) return proposed;
-  // Ocupado: siguiente consecutivo de la nueva sede y tipo (formato estándar), o sufijo -2.
-  const siteCode = code(sites, input.siteId);
-  const typePrefix = prefix(input.elementTypeId);
-  if (siteCode && typePrefix && proposed.toUpperCase().startsWith(`${siteCode}-${typePrefix}-`.toUpperCase())) {
-    return generateElementCode(input.siteId, input.elementTypeId);
-  }
+  // El número del elemento se conserva siempre. Si en la nueva sede ya existe ese
+  // código, se agrega un sufijo (COM-EXT-023-2) en lugar de cambiar el número.
   const existing = new Set(await codesStartingWith(proposed));
+  existing.delete(before.code);
   return firstFreeCode(proposed, (c) => existing.has(c)).slice(0, 40);
 }
 
