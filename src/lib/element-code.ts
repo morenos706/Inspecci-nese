@@ -1,10 +1,10 @@
 /**
  * Códigos de elementos (código puro, probado en tests/unit/element-code.test.ts).
  *
- * Formato configurado: SEDE-TIPO-NNN (p. ej. PRO-EXT-024), donde SEDE es el
- * código de la sede, TIPO el prefijo del tipo de elemento (o su código) y NNN
- * el consecutivo siguiente para esa sede y tipo. El sistema lo asigna; el
- * usuario no lo escribe.
+ * Formato: SEDE-TIPO-ID (p. ej. PRO-EXT-024), donde SEDE es el código de la
+ * sede, TIPO el prefijo del tipo de elemento (o su código) e ID el número del
+ * equipo, único por tipo en todas las sedes. El código no se edita: el ID se
+ * conserva y solo cambia la codificación al mover el elemento.
  */
 
 /** Prefijo del tipo para el código: el configurado en el tipo, o su código. */
@@ -12,17 +12,6 @@ export function typeCodePrefix(type: { code: string; codePrefix?: string | null 
   return (type.codePrefix || type.code).toUpperCase();
 }
 
-/** Siguiente código SEDE-TIPO-NNN según los códigos existentes (incluye eliminados: el código es único). */
-export function nextSequentialCode(siteCode: string, typePrefix: string, existing: Iterable<string>): string {
-  const base = `${siteCode}-${typePrefix}-`.toUpperCase();
-  let max = 0;
-  for (const code of existing) {
-    if (!code.toUpperCase().startsWith(base)) continue;
-    const match = code.slice(base.length).match(/^(\d+)/);
-    if (match) max = Math.max(max, Number(match[1]));
-  }
-  return `${base}${String(max + 1).padStart(3, "0")}`;
-}
 
 /**
  * Recodificación del elemento cuando cambia de sede o zona (código puro).
@@ -66,4 +55,50 @@ export function firstFreeCode(proposed: string, taken: (code: string) => boolean
     if (!taken(candidate)) return candidate;
   }
   return proposed;
+}
+
+/**
+ * Número (ID) del elemento escrito por el usuario: dígitos con una letra
+ * opcional (23, 023, 34A). Devuelve el segmento normalizado ("023", "034A")
+ * o null si no es válido.
+ */
+export function normalizeIdNumber(value: string): string | null {
+  const match = value.trim().toUpperCase().replace(/\s+/g, "").match(/^0*(\d{1,6})([A-Z]?)$/);
+  if (!match) return null;
+  return `${match[1]!.padStart(3, "0")}${match[2]}`;
+}
+
+/** Clave comparable de un ID: "023" y "23" son el mismo número. */
+export function idKey(segment: string): string {
+  const match = segment.toUpperCase().match(/^0*(\d+)([A-Z]?)$/);
+  return match ? `${Number(match[1])}${match[2]}` : segment.toUpperCase();
+}
+
+/** ID del elemento dentro de su código (segmento que sigue al prefijo del tipo): PRO-EXT-023 → "23". */
+export function idFromCode(code: string, typePrefix: string): string | null {
+  const parts = code.toUpperCase().split("-");
+  const i = parts.findIndex((p, idx) => idx > 0 && p === typePrefix.toUpperCase());
+  const segment = i > 0 ? parts[i + 1] : undefined;
+  return segment && /^\d+[A-Z]?$/.test(segment) ? idKey(segment) : null;
+}
+
+/** Siguiente número libre del tipo considerando TODAS las sedes (el ID es único por tipo). */
+export function nextIdNumber(codes: Iterable<string>, typePrefix: string): string {
+  let max = 0;
+  for (const code of codes) {
+    const id = idFromCode(code, typePrefix);
+    const n = id ? Number.parseInt(id, 10) : NaN;
+    if (Number.isFinite(n)) max = Math.max(max, n);
+  }
+  return String(max + 1).padStart(3, "0");
+}
+
+/** Datos para mostrar el código y validar el ID en el formulario (el servidor valida igual). */
+export interface CodeInfo {
+  /** Prefijo del tipo para el código (EXT, LUZ…), por ID de tipo. */
+  typePrefix: Record<string, string>;
+  /** Siguiente ID libre por tipo (en todas las sedes). */
+  nextId: Record<string, string>;
+  /** IDs ya usados por tipo → «código · sede». */
+  usedIds: Record<string, Record<string, string>>;
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { firstFreeCode, nextSequentialCode, recodeElement, typeCodePrefix } from "@/lib/element-code";
+import { firstFreeCode, idFromCode, idKey, nextIdNumber, recodeElement, typeCodePrefix } from "@/lib/element-code";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/server/db";
@@ -213,14 +213,31 @@ async function codesStartingWith(prefix: string, tx: Tx = db) {
   return rows.map((r) => r.code);
 }
 
-/** Siguiente código SEDE-TIPO-NNN para la sede y el tipo indicados. */
-export async function generateElementCode(siteId: string, elementTypeId: string, tx: Tx = db): Promise<string> {
+/**
+ * Código de un elemento nuevo: SEDE-TIPO-ID. El ID lo puede escribir el
+ * usuario (debe ser único para el tipo en TODAS las sedes) o, si lo deja
+ * vacío, se toma el siguiente número libre del tipo.
+ */
+export async function generateElementCode(siteId: string, elementTypeId: string, idNumber: string | undefined, tx: Tx = db): Promise<string> {
   const [site, type] = await Promise.all([
     tx.site.findUniqueOrThrow({ where: { id: siteId }, select: { code: true } }),
     tx.elementType.findUniqueOrThrow({ where: { id: elementTypeId }, select: { code: true, codePrefix: true } }),
   ]);
   const prefix = typeCodePrefix(type);
-  return nextSequentialCode(site.code, prefix, await codesStartingWith(`${site.code}-${prefix}-`.toUpperCase(), tx));
+  const sameType = await tx.element.findMany({
+    where: { OR: [{ elementTypeId }, { code: { contains: `-${prefix}-` } }] },
+    select: { code: true, deletedAt: true, site: { select: { name: true } } },
+  });
+  if (!idNumber) return `${site.code}-${prefix}-${nextIdNumber(sameType.map((e) => e.code), prefix)}`.toUpperCase();
+
+  const clash = sameType.find((e) => idFromCode(e.code, prefix) === idKey(idNumber));
+  if (clash) {
+    const message = clash.deletedAt
+      ? `El ID ${idNumber} perteneció a un elemento eliminado (${clash.code}): usa otro número.`
+      : `El ID ${idNumber} ya existe en la sede ${clash.site.name} (${clash.code}).`;
+    throw new ValidationError({ idNumber: [message] }, message);
+  }
+  return `${site.code}-${prefix}-${idNumber}`.toUpperCase();
 }
 
 const isCodeConflict = (error: unknown) =>
@@ -234,7 +251,9 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
     try {
       return await createElementOnce(input, ctx);
     } catch (error) {
-      if (attempt < 4 && isCodeConflict(error)) continue;
+      // Con ID escrito por el usuario no se reintenta: el choque se informa.
+      if (attempt < 4 && !input.idNumber && isCodeConflict(error)) continue;
+      if (input.idNumber && isCodeConflict(error)) throw new ValidationError({ idNumber: ["Ese ID acaba de ser usado por otro elemento. Usa otro número."] });
       throw error;
     }
   }
@@ -249,7 +268,7 @@ async function createElementOnce(input: ElementInput, ctx: ServiceContext) {
     firstInspectionAt: input.firstInspectionAt ?? null,
   });
   return db.$transaction(async (tx) => {
-    const code = await generateElementCode(input.siteId, input.elementTypeId, tx);
+    const code = await generateElementCode(input.siteId, input.elementTypeId, input.idNumber, tx);
     const element = await tx.element.create({
       data: {
         code,

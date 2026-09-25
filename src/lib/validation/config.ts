@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeIdNumber } from "@/lib/element-code";
 import { ElementStatus, InspectionFrequency, Priority, ResponseType } from "@/generated/prisma/enums";
 import { zCheckbox, zCode, zId, zOptionalText, zRequiredText } from "@/lib/validation/form";
 import { isEvaluable, type ComplianceRule, type QuestionOption } from "@/lib/inspection-rules";
@@ -136,6 +137,21 @@ export const elementSchema = z
     elementTypeId: z.string({ error: "Selecciona el tipo" }).min(1, "Selecciona el tipo").max(64),
     // El código lo asigna el sistema (SEDE-TIPO-NNN); lo que envíe el formulario se ignora.
     code: z.unknown().optional().transform(() => undefined),
+    // ID (número) del elemento: opcional; vacío = el siguiente libre del tipo. Único por tipo en todas las sedes.
+    idNumber: z
+      .string()
+      .trim()
+      .max(10)
+      .optional()
+      .transform((v, ctx) => {
+        if (!v) return undefined;
+        const n = normalizeIdNumber(v);
+        if (!n) {
+          ctx.addIssue({ code: "custom", message: "ID inválido: solo números y una letra opcional (ej.: 23 o 34A)" });
+          return z.NEVER;
+        }
+        return n;
+      }),
     name: zRequiredText("El nombre", 150),
     description: zOptionalText(1000),
     processId: z.string({ error: "Selecciona el proceso" }).min(1, "Selecciona el proceso"),

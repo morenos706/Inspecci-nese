@@ -73,9 +73,11 @@ vencidas por zona.
 - **Usuarios**: eliminar (baja lógica si tiene historial; bloqueado si tiene
   planes abiertos) y **carga masiva** en la hoja *Usuarios* con correo de
   bienvenida para definir la contraseña.
-- **Código del elemento automático y bloqueado**: al crear, el sistema asigna
-  SEDE-TIPO-consecutivo (PRO-EXT-024, con el prefijo del tipo); nadie lo
-  escribe ni lo edita (el servidor ignora cualquier código enviado). Si el
+- **Código del elemento SEDE-TIPO-ID, bloqueado**: al crear se escribe el **ID**
+  (número del equipo; vacío = siguiente libre del tipo). El ID es único por
+  tipo en **todas** las sedes: si ya existe, el formulario y el servidor lo
+  rechazan indicando dónde está. El código no se edita (el servidor ignora
+  cualquier código enviado). Si el
   elemento cambia de sede, zona o tipo se recodifica (PRO-EXT-023 →
   COM-EXT-023) conservando siempre su número (si ya existe, COM-EXT-023-2); el
   QR sigue funcionando. En la carga masiva, «Código» vacío =

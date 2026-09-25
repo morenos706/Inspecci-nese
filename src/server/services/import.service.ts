@@ -11,7 +11,7 @@ import { ELEMENT_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/labels";
 import { FREQUENCIES, FREQUENCY_LABELS, scheduleFields } from "@/lib/scheduling";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { generateQrToken } from "@/server/services/elements.service";
-import { nextSequentialCode, typeCodePrefix } from "@/lib/element-code";
+import { nextIdNumber, typeCodePrefix } from "@/lib/element-code";
 import {
   analyzeCatalog,
   applyCatalog,
@@ -123,7 +123,7 @@ export async function buildImportTemplate(): Promise<Buffer> {
     "ELEMENTOS: Sede, Proceso y Tipo existentes o creados en este mismo archivo (se acepta código o nombre). Zona: de esa sede.",
     "   Responsable: correo de un usuario activo. Frecuencia vacía = la del tipo. Fechas dd/mm/aaaa.",
     "   Con «Última inspección» la próxima se calcula sola; si no, se usa «Próxima inspección» (o hoy).",
-    "   Código: déjalo VACÍO para elementos nuevos y el sistema asigna SEDE-TIPO-consecutivo (ej.: PRO-EXT-024).",
+    "   Código: déjalo VACÍO para elementos nuevos y el sistema asigna SEDE-TIPO-ID con el siguiente número libre del tipo (ej.: PRO-EXT-128).",
     "   Si escribes un código que ya existe, la fila ACTUALIZA ese elemento. Nada se borra.",
     "",
     "Al subir el archivo verás una vista previa con los errores por fila; solo se importa cuando todo está correcto y todo se guarda en una sola operación.",
@@ -355,7 +355,8 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer, currentUserId:
     // Código vacío → el sistema asigna SEDE-TIPO-NNN (elemento nuevo). Con código → crea o actualiza ese elemento.
     let code = text(values.codigo).toUpperCase();
     if (!code && site && type) {
-      code = nextSequentialCode(site.code, typeCodePrefix(type), usedCodes);
+      const prefix = typeCodePrefix(type);
+      code = `${site.code}-${prefix}-${nextIdNumber(usedCodes, prefix)}`.toUpperCase();
       usedCodes.add(code);
       warnings.push(`Código asignado automáticamente: ${code}`);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstFreeCode, nextSequentialCode, recodeElement, typeCodePrefix } from "@/lib/element-code";
+import { firstFreeCode, idFromCode, idKey, nextIdNumber, normalizeIdNumber, recodeElement, typeCodePrefix } from "@/lib/element-code";
 
 describe("recodificación por sede y zona", () => {
   it("cambia el prefijo de sede", () => {
@@ -28,14 +28,30 @@ describe("código automático", () => {
     expect(typeCodePrefix({ code: "EXT", codePrefix: null })).toBe("EXT");
     expect(typeCodePrefix({ code: "BOTF", codePrefix: "bot" })).toBe("BOT");
   });
-  it("siguiente consecutivo por sede y tipo", () => {
-    const codes = ["PRO-EXT-001", "PRO-EXT-023", "PRO-EXT-034A", "PRO-EXT-R01", "COM-EXT-120", "PRO-EXTRA-900", "PRO-EXT-023-2"];
-    expect(nextSequentialCode("PRO", "EXT", codes)).toBe("PRO-EXT-035");
-    expect(nextSequentialCode("COM", "EXT", codes)).toBe("COM-EXT-121");
-    expect(nextSequentialCode("RIO", "EXT", codes)).toBe("RIO-EXT-001");
-    expect(nextSequentialCode("pro", "luz", [])).toBe("PRO-LUZ-001");
-  });
   it("recodifica el tipo", () => {
     expect(recodeElement("PRO-BOT-002", { fromType: "BOT", toType: "BOTF" })).toBe("PRO-BOTF-002");
+  });
+});
+
+describe("ID del elemento", () => {
+  it("normaliza lo que escribe el usuario", () => {
+    expect(normalizeIdNumber("23")).toBe("023");
+    expect(normalizeIdNumber(" 0023 ")).toBe("023");
+    expect(normalizeIdNumber("34a")).toBe("034A");
+    expect(normalizeIdNumber("1250")).toBe("1250");
+    expect(normalizeIdNumber("A-1")).toBeNull();
+    expect(normalizeIdNumber("")).toBeNull();
+  });
+  it("lee el ID del código y lo compara sin ceros", () => {
+    expect(idFromCode("PRO-EXT-023", "EXT")).toBe("23");
+    expect(idFromCode("COM-EXT-023-2", "EXT")).toBe("23");
+    expect(idFromCode("PRO-EXT-034A", "EXT")).toBe("34A");
+    expect(idFromCode("PRO-EXT-R01", "EXT")).toBeNull();
+    expect(idFromCode("PRO-LUZ-023", "EXT")).toBeNull();
+    expect(idKey("023")).toBe(idKey("23"));
+  });
+  it("siguiente número libre en todas las sedes", () => {
+    expect(nextIdNumber(["PRO-EXT-023", "COM-EXT-120", "RIO-EXT-007", "PRO-LUZ-900"], "EXT")).toBe("121");
+    expect(nextIdNumber([], "ALA")).toBe("001");
   });
 });

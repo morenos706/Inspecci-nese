@@ -14,6 +14,7 @@ import { ELEMENT_STATUS_LABELS, ELEMENT_STATUSES } from "@/lib/labels";
 import { scheduleFields } from "@/lib/scheduling";
 import { formatDate } from "@/lib/utils";
 import { saveElementAction } from "@/server/actions/elements.actions";
+import { idKey, normalizeIdNumber, type CodeInfo } from "@/lib/element-code";
 
 interface TypeOption {
   id: string;
@@ -48,34 +49,45 @@ const toInputDate = (d: Date | null | undefined) => (d ? new Date(d).toISOString
 export function ElementForm({
   element,
   types,
-  codePreview,
+  codeInfo,
   processes,
   sites,
   users,
 }: {
   element?: ElementFormValues;
   types: TypeOption[];
-  codePreview: Record<string, string>;
+  codeInfo: CodeInfo;
   processes: { id: string; name: string }[];
-  sites: { id: string; name: string; zones: { id: string; name: string }[] }[];
+  sites: { id: string; code: string; name: string; zones: { id: string; name: string }[] }[];
   users: { id: string; name: string; jobTitle: string | null }[];
 }) {
   const { onSubmit, pending, errors } = useActionForm(saveElementAction);
   const [typeId, setTypeId] = useState(element?.elementTypeId ?? "");
   const [siteId, setSiteId] = useState(element?.siteId ?? "");
+  const [idNumber, setIdNumber] = useState("");
   const [frequency, setFrequency] = useState<InspectionFrequency>(element?.frequency ?? "MONTHLY");
   const [lastDate, setLastDate] = useState(toInputDate(element?.lastInspectionAt));
   const [firstDate, setFirstDate] = useState(element?.lastInspectionAt ? "" : toInputDate(element?.nextInspectionAt));
   const hasInspections = (element?.inspectionCount ?? 0) > 0;
   const zones = sites.find((s) => s.id === siteId)?.zones ?? [];
-  // El código lo asigna el sistema: SEDE-TIPO-NNN. En edición cambia solo si cambian la sede, la zona o el tipo.
+  // Código = SEDE-TIPO-ID. El ID se escribe al crear (o se toma el siguiente libre) y luego no se cambia.
   const moved = element && (siteId !== element.siteId || typeId !== element.elementTypeId);
+  const siteCode = sites.find((x) => x.id === siteId)?.code;
+  const prefix = codeInfo.typePrefix[typeId];
+  const typedId = idNumber.trim() ? normalizeIdNumber(idNumber) : null;
+  const idError = idNumber.trim()
+    ? !typedId
+      ? "Solo números y una letra opcional (ej.: 23 o 34A)"
+      : codeInfo.usedIds[typeId]?.[idKey(typedId)]
+        ? `Ya existe: ${codeInfo.usedIds[typeId]![idKey(typedId)]}`
+        : null
+    : null;
   const codeText = element
     ? moved
       ? `${element.code} → se actualizará al guardar`
       : element.code
-    : siteId && typeId
-      ? (codePreview[`${siteId}:${typeId}`] ?? "Se asignará al guardar")
+    : siteCode && prefix
+      ? `${siteCode}-${prefix}-${typedId ?? codeInfo.nextId[typeId] ?? "???"}`
       : "Elige la sede y el tipo";
 
   function onTypeChange(id: string) {
@@ -128,12 +140,30 @@ export function ElementForm({
             </Select>
           </FormField>
           {hasInspections && <input type="hidden" name="elementTypeId" value={typeId} />}
+          {!element && (
+            <FormField
+              label="ID del elemento"
+              errors={idError ? [idError] : errors("idNumber")}
+              hint={typeId ? `Número del equipo. Vacío = siguiente libre (${codeInfo.nextId[typeId] ?? "—"}). No puede repetirse en ninguna sede.` : "Elige primero el tipo."}
+            >
+              <Input
+                name="idNumber"
+                value={idNumber}
+                onChange={(e) => setIdNumber(e.target.value)}
+                inputMode="numeric"
+                maxLength={10}
+                placeholder={typeId ? codeInfo.nextId[typeId] : "Ej.: 23"}
+                disabled={!typeId}
+                className="font-mono uppercase"
+              />
+            </FormField>
+          )}
           <FormField
             label="Código (automático)"
             hint={
               element
-                ? "Lo asigna el sistema. Cambia solo si cambias la sede, la zona o el tipo."
-                : "Lo asigna el sistema al guardar: SEDE-TIPO-consecutivo."
+                ? "No se puede modificar. Cambia solo la codificación si cambias la sede, la zona o el tipo; el ID se conserva."
+                : "SEDE-TIPO-ID. Se asigna al guardar y no se puede modificar."
             }
           >
             <Input value={codeText} readOnly disabled aria-readonly="true" className="font-mono uppercase" />
@@ -267,7 +297,7 @@ export function ElementForm({
       </Card>
 
       <FormActions cancelHref={element ? `/inventory/${element.id}` : "/inventory"}>
-        <Button type="submit" loading={pending} className="w-full sm:w-auto">
+        <Button type="submit" loading={pending} disabled={Boolean(idError)} className="w-full sm:w-auto">
           {element ? "Guardar cambios" : "Crear elemento"}
         </Button>
       </FormActions>
