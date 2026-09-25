@@ -216,6 +216,60 @@ Las migraciones se aplican solas antes de iniciar la nueva versión.
 
 ---
 
+### 2.9 Correo con Gmail (notificaciones)
+
+1. En la cuenta de Gmail que enviará los correos activa la **Verificación en 2 pasos**
+   (https://myaccount.google.com/security).
+2. Crea una **contraseña de aplicación** en https://myaccount.google.com/apppasswords
+   (nombre: "Inspecciones"). Google muestra 16 letras: cópialas **sin espacios**.
+   No uses la contraseña normal de Gmail: no funciona.
+3. En el servidor edita `nano .env.production`:
+
+   ```env
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=tucuenta@gmail.com
+   SMTP_PASSWORD=abcdefghijklmnop
+   MAIL_FROM="Inspecciones <tucuenta@gmail.com>"
+   ```
+
+4. Aplica el cambio: `docker compose -f docker-compose.prod.yml up -d --force-recreate app`.
+5. Prueba: en la pantalla de inicio de sesión usa **¿Olvidaste tu contraseña?** con tu
+   correo; debe llegar el mensaje (revisa también Spam). Si no llega:
+   `docker compose -f docker-compose.prod.yml logs app | grep -i mail`.
+
+Límites de Gmail: ~500 destinatarios por día (cuenta gratuita) o ~2.000
+(Google Workspace); suficiente para la operación de brigadas. Para volúmenes
+mayores usa el correo corporativo (Microsoft 365) o Amazon SES.
+
+### 2.10 Reiniciar el sistema desde cero
+
+Borra **todos** los datos (usuarios, inventario, inspecciones, hallazgos y
+fotos) y deja el sistema como recién instalado: roles y permisos, y el
+administrador de `SEED_ADMIN_EMAIL` con la clave `SEED_DEFAULT_PASSWORD`
+(pedirá cambiarla). El certificado HTTPS se conserva. **No se puede deshacer.**
+
+```bash
+cd ~/Inspecci-nese
+git pull
+# 1. Respaldo por si acaso
+mkdir -p backups
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U inspecciones -Fc inspecciones > backups/antes-de-reiniciar-$(date +%F).dump
+# 2. Detener
+docker compose -f docker-compose.prod.yml down
+# 3. Borrar base de datos y fotos (NO borres el volumen caddydata: es el certificado)
+docker volume ls | grep inspecci
+docker volume rm inspecci-nese_pgdata inspecci-nese_uploads
+# 4. Arrancar limpio (crea la base, los roles y el administrador)
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml logs migrate | tail -5
+```
+
+Si `docker volume ls` muestra otro prefijo (depende del nombre de la carpeta),
+usa esos nombres en el paso 3. Luego ingresa como administrador, carga sedes,
+tipos, preguntas, zonas e inventario en **Carga masiva** y crea los usuarios.
+
 ## Etapa 3 — Ponerlo en marcha en la empresa
 
 ### 3.1 Configuración inicial (administrador, ~1 día)
