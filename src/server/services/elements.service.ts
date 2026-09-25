@@ -1,9 +1,9 @@
 import "server-only";
-import { firstFreeCode, recodeElement } from "@/lib/element-code";
+import { firstFreeCode, nextSequentialCode, recodeElement, typeCodePrefix } from "@/lib/element-code";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/server/db";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { audit, diff } from "@/server/audit";
 import { AuthorizationError, DomainError, NotFoundError, ValidationError } from "@/server/errors";
 import { getReadScope, type CurrentUser } from "@/server/auth/current-user";
@@ -205,7 +205,42 @@ async function assertReferences(input: ElementInput, typeMustBeActive: boolean) 
   }
 }
 
+type Tx = Prisma.TransactionClient | typeof db;
+
+/** Códigos existentes que empiezan por un prefijo (incluye eliminados: el código es único). */
+async function codesStartingWith(prefix: string, tx: Tx = db) {
+  const rows = await tx.element.findMany({ where: { code: { startsWith: prefix } }, select: { code: true } });
+  return rows.map((r) => r.code);
+}
+
+/** Siguiente código SEDE-TIPO-NNN para la sede y el tipo indicados. */
+export async function generateElementCode(siteId: string, elementTypeId: string, tx: Tx = db): Promise<string> {
+  const [site, type] = await Promise.all([
+    tx.site.findUniqueOrThrow({ where: { id: siteId }, select: { code: true } }),
+    tx.elementType.findUniqueOrThrow({ where: { id: elementTypeId }, select: { code: true, codePrefix: true } }),
+  ]);
+  const prefix = typeCodePrefix(type);
+  return nextSequentialCode(site.code, prefix, await codesStartingWith(`${site.code}-${prefix}-`.toUpperCase(), tx));
+}
+
+const isCodeConflict = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  error.code === "P2002" &&
+  JSON.stringify(error.meta ?? {}).includes("code");
+
 export async function createElement(input: ElementInput, ctx: ServiceContext) {
+  // Dos personas creando a la vez pueden calcular el mismo consecutivo: se reintenta.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await createElementOnce(input, ctx);
+    } catch (error) {
+      if (attempt < 4 && isCodeConflict(error)) continue;
+      throw error;
+    }
+  }
+}
+
+async function createElementOnce(input: ElementInput, ctx: ServiceContext) {
   await assertReferences(input, true);
   const schedule = scheduleFields({
     lastInspectionAt: input.lastInspectionAt ?? null,
@@ -214,9 +249,10 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
     firstInspectionAt: input.firstInspectionAt ?? null,
   });
   return db.$transaction(async (tx) => {
+    const code = await generateElementCode(input.siteId, input.elementTypeId, tx);
     const element = await tx.element.create({
       data: {
-        code: input.code,
+        code,
         qrToken: generateQrToken(),
         elementTypeId: input.elementTypeId,
         name: input.name,
@@ -234,11 +270,11 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
         status: input.status,
         ...schedule,
       },
-      select: { id: true },
+      select: { id: true, code: true },
     });
     await audit(
       auditCtx(ctx),
-      { action: "element.create", entityType: "Element", entityId: element.id, after: { ...input, ...schedule } },
+      { action: "element.create", entityType: "Element", entityId: element.id, after: { ...input, code, ...schedule } },
       tx,
     );
     return element;
@@ -246,33 +282,53 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
 }
 
 /**
- * Si el elemento cambia de sede o zona y el código no se editó a mano, el
- * código se actualiza (PRO-EXT-023 → COM-EXT-023). El QR sigue siendo válido
- * (usa un token propio), pero la etiqueta impresa muestra el código viejo.
+ * El código no se edita a mano: si el elemento cambia de sede, zona o tipo,
+ * se actualiza el segmento correspondiente (PRO-EXT-023 → COM-EXT-023). Si ese
+ * código ya existe, se asigna el siguiente consecutivo de la nueva sede y tipo.
+ * El QR sigue siendo válido (usa un token propio), pero la etiqueta impresa
+ * muestra el código anterior.
  */
-async function recodeOnMove(input: ElementInput & { id: string }, before: { code: string; siteId: string; zoneId: string | null }) {
-  if (input.code !== before.code) return input.code; // lo cambió el usuario: se respeta
+async function recodeOnMove(
+  input: ElementInput & { id: string },
+  before: { code: string; siteId: string; zoneId: string | null; elementTypeId: string },
+) {
   const siteChanged = input.siteId !== before.siteId;
   const zoneChanged = (input.zoneId ?? null) !== before.zoneId;
-  if (!siteChanged && !zoneChanged) return input.code;
-  const ids = [before.siteId, input.siteId];
+  const typeChanged = input.elementTypeId !== before.elementTypeId;
+  if (!siteChanged && !zoneChanged && !typeChanged) return before.code;
   const zoneIds = [before.zoneId, input.zoneId].filter((z): z is string => Boolean(z));
-  const [sites, zones] = await Promise.all([
-    db.site.findMany({ where: { id: { in: ids } }, select: { id: true, code: true } }),
+  const [sites, zones, types] = await Promise.all([
+    db.site.findMany({ where: { id: { in: [before.siteId, input.siteId] } }, select: { id: true, code: true } }),
     db.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true, code: true } }),
+    db.elementType.findMany({
+      where: { id: { in: [before.elementTypeId, input.elementTypeId] } },
+      select: { id: true, code: true, codePrefix: true },
+    }),
   ]);
   const code = (list: { id: string; code: string }[], id: string | null | undefined) => list.find((x) => x.id === id)?.code ?? null;
-  const proposed = recodeElement(input.code, {
+  const prefix = (id: string) => {
+    const t = types.find((x) => x.id === id);
+    return t ? typeCodePrefix(t) : null;
+  };
+  const proposed = recodeElement(before.code, {
     fromSite: siteChanged ? code(sites, before.siteId) : null,
     toSite: siteChanged ? code(sites, input.siteId) : null,
     fromZone: zoneChanged ? code(zones, before.zoneId) : null,
     toZone: zoneChanged ? code(zones, input.zoneId) : null,
+    fromType: typeChanged ? prefix(before.elementTypeId) : null,
+    toType: typeChanged ? prefix(input.elementTypeId) : null,
   });
-  if (proposed === input.code) return input.code;
-  const taken = new Set(
-    (await db.element.findMany({ where: { code: { startsWith: proposed }, id: { not: input.id } }, select: { code: true } })).map((e) => e.code),
-  );
-  return firstFreeCode(proposed, (c) => taken.has(c)).slice(0, 40);
+  if (proposed === before.code) return before.code;
+  const taken = await db.element.findFirst({ where: { code: proposed, id: { not: input.id } }, select: { id: true } });
+  if (!taken) return proposed;
+  // Ocupado: siguiente consecutivo de la nueva sede y tipo (formato estándar), o sufijo -2.
+  const siteCode = code(sites, input.siteId);
+  const typePrefix = prefix(input.elementTypeId);
+  if (siteCode && typePrefix && proposed.toUpperCase().startsWith(`${siteCode}-${typePrefix}-`.toUpperCase())) {
+    return generateElementCode(input.siteId, input.elementTypeId);
+  }
+  const existing = new Set(await codesStartingWith(proposed));
+  return firstFreeCode(proposed, (c) => existing.has(c)).slice(0, 40);
 }
 
 export async function updateElement(input: ElementInput & { id: string }, ctx: ServiceContext): Promise<{ code: string; recoded: boolean }> {
@@ -343,7 +399,7 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
       : {}),
   };
   const changes = diff(before as Record<string, unknown>, after);
-  const recoded = newCode !== input.code;
+  const recoded = newCode !== before.code;
   if (!changes.changed) return { code: newCode, recoded };
 
   await db.$transaction(async (tx) => {
@@ -357,21 +413,3 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
   return { code: newCode, recoded };
 }
 
-/** Sugerencia de próximo código por tipo: EXT-001 → EXT-024 (máximo existente + 1). */
-export async function suggestCodes(types: { id: string; codePrefix: string | null }[]) {
-  const result: Record<string, string> = {};
-  for (const type of types) {
-    if (!type.codePrefix) continue;
-    const prefix = `${type.codePrefix}-`;
-    const codes = await db.element.findMany({
-      where: { code: { startsWith: prefix } },
-      select: { code: true },
-    });
-    const max = codes.reduce((acc, { code }) => {
-      const n = Number.parseInt(code.slice(prefix.length), 10);
-      return Number.isFinite(n) && n > acc ? n : acc;
-    }, 0);
-    result[type.id] = `${prefix}${String(max + 1).padStart(3, "0")}`;
-  }
-  return result;
-}

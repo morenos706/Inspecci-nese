@@ -11,6 +11,7 @@ import { ELEMENT_STATUS_LABELS, PRIORITY_LABELS } from "@/lib/labels";
 import { FREQUENCIES, FREQUENCY_LABELS, scheduleFields } from "@/lib/scheduling";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { generateQrToken } from "@/server/services/elements.service";
+import { nextSequentialCode, typeCodePrefix } from "@/lib/element-code";
 import {
   analyzeCatalog,
   applyCatalog,
@@ -44,7 +45,7 @@ const ZONE_COLUMNS = [
 ] as const;
 
 const ELEMENT_COLUMNS = [
-  { key: "codigo", header: "Código*", width: 14 },
+  { key: "codigo", header: "Código (vacío = automático)", width: 16 },
   { key: "tipo", header: "Tipo*", width: 16 },
   { key: "nombre", header: "Nombre*", width: 30 },
   { key: "proceso", header: "Proceso*", width: 18 },
@@ -74,7 +75,7 @@ async function catalogs() {
     db.process.findMany({ where: { deletedAt: null, active: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
     db.elementType.findMany({
       where: { deletedAt: null, active: true },
-      select: { id: true, code: true, name: true, defaultFrequency: true, defaultFrequencyDays: true },
+      select: { id: true, code: true, name: true, codePrefix: true, defaultFrequency: true, defaultFrequencyDays: true },
       orderBy: { name: "asc" },
     }),
     db.user.findMany({ where: { deletedAt: null, active: true }, select: { id: true, email: true, name: true }, orderBy: { name: "asc" } }),
@@ -122,7 +123,8 @@ export async function buildImportTemplate(): Promise<Buffer> {
     "ELEMENTOS: Sede, Proceso y Tipo existentes o creados en este mismo archivo (se acepta código o nombre). Zona: de esa sede.",
     "   Responsable: correo de un usuario activo. Frecuencia vacía = la del tipo. Fechas dd/mm/aaaa.",
     "   Con «Última inspección» la próxima se calcula sola; si no, se usa «Próxima inspección» (o hoy).",
-    "   Si el código ya existe, la fila ACTUALIZA el elemento; si no, lo CREA. Nada se borra.",
+    "   Código: déjalo VACÍO para elementos nuevos y el sistema asigna SEDE-TIPO-consecutivo (ej.: PRO-EXT-024).",
+    "   Si escribes un código que ya existe, la fila ACTUALIZA ese elemento. Nada se borra.",
     "",
     "Al subir el archivo verás una vista previa con los errores por fila; solo se importa cuando todo está correcto y todo se guarda en una sola operación.",
   ].forEach((line, i) => {
@@ -175,7 +177,7 @@ export async function buildImportTemplate(): Promise<Buffer> {
     descripcion: "Fila de ejemplo: bórrala o reemplázala",
   });
   const elementsWs = addTemplateSheet(wb, "Elementos", ELEMENT_COLUMNS, {
-    codigo: "EXT-100",
+    codigo: "",
     tipo: types[0]?.name ?? "Extintor",
     nombre: "Extintor ABC 20 lb",
     proceso: processes[0]?.name ?? "Producción",
@@ -333,15 +335,14 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer, currentUserId:
   const elementPlans: ElementPlan[] = [];
   const elementIssues: RowIssue[] = [];
   const seenCodes = new Set<string>();
+  // Códigos ya usados (incluye eliminados) + los del archivo: para asignar consecutivos a las filas sin código.
+  const usedCodes = new Set(
+    elementRows.some((r) => !text(r.values.codigo)) ? (await db.element.findMany({ select: { code: true } })).map((e) => e.code) : [],
+  );
+  for (const r of elementRows) if (text(r.values.codigo)) usedCodes.add(text(r.values.codigo).toUpperCase());
   for (const { row, values } of elementRows) {
     const errors: string[] = [];
     const warnings: string[] = [];
-    const code = text(values.codigo).toUpperCase();
-    if (!code) errors.push("Falta el código");
-    else if (!CODE_RE.test(code) || code.length > 40) errors.push("Código inválido (solo letras, números, - y _)");
-    if (code && seenCodes.has(code)) errors.push("Código repetido en el archivo");
-    seenCodes.add(code);
-
     const type = findByCodeOrName(cat.types, text(values.tipo));
     if (!type) errors.push(`Tipo «${text(values.tipo)}» no existe o está inactivo`);
     const name = text(values.nombre);
@@ -350,6 +351,18 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer, currentUserId:
     if (!process) errors.push(`Proceso «${text(values.proceso)}» no existe o está inactivo`);
     const site = findByCodeOrName(cat.sites, text(values.sede));
     if (!site) errors.push(`Sede «${text(values.sede)}» no existe`);
+
+    // Código vacío → el sistema asigna SEDE-TIPO-NNN (elemento nuevo). Con código → crea o actualiza ese elemento.
+    let code = text(values.codigo).toUpperCase();
+    if (!code && site && type) {
+      code = nextSequentialCode(site.code, typeCodePrefix(type), usedCodes);
+      usedCodes.add(code);
+      warnings.push(`Código asignado automáticamente: ${code}`);
+    }
+    if (!code) errors.push("Sin código: indica sede y tipo válidos para asignarlo");
+    else if (!CODE_RE.test(code) || code.length > 40) errors.push("Código inválido (solo letras, números, - y _)");
+    if (code && seenCodes.has(code)) errors.push("Código repetido en el archivo");
+    seenCodes.add(code);
 
     // Zona: existente en la sede o creada en la hoja Zonas del mismo archivo
     let zoneRef: ElementPlan["data"]["zoneRef"] = null;

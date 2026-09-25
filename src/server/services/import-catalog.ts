@@ -59,6 +59,7 @@ export interface CatalogRef {
   name: string;
 }
 export interface TypeRef extends CatalogRef {
+  codePrefix?: string | null;
   defaultFrequency: InspectionFrequency;
   defaultFrequencyDays: number | null;
 }
@@ -218,6 +219,7 @@ export async function analyzeCatalog(
       id: t.existing?.id ?? virtualId("type", t.code),
       code: t.code,
       name: t.name,
+      codePrefix: prefix || null,
       defaultFrequency: frequency!,
       defaultFrequencyDays: days,
     };

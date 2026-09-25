@@ -56,9 +56,9 @@ describe("elementTypeSchema / elementSchema", () => {
 
   const element = { elementTypeId: "t", code: "ext-024", name: "Extintor", processId: "p", siteId: "s", frequency: "MONTHLY" };
 
-  it("normaliza el código y convierte fechas", () => {
+  it("ignora el código enviado (lo asigna el sistema) y convierte fechas", () => {
     const e = elementSchema.parse({ ...element, lastInspectionAt: "2026-09-01" });
-    expect(e.code).toBe("EXT-024");
+    expect(e.code).toBeUndefined();
     expect(e.lastInspectionAt?.toISOString()).toBe("2026-09-01T12:00:00.000Z");
     expect(e.frequencyDays).toBeNull();
   });

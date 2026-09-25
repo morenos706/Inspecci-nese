@@ -20,14 +20,14 @@ export async function saveElementAction(_prev: ActionState, formData: FormData):
       return {
         ok: true,
         message: recoded
-          ? `Elemento actualizado. Por el cambio de sede/zona su código ahora es ${code}: reimprime la etiqueta QR.`
+          ? `Elemento actualizado. Por el cambio de sede, zona o tipo su código ahora es ${code}: reimprime la etiqueta QR.`
           : "Elemento actualizado.",
         redirectTo: `/inventory/${input.id}`,
       };
     }
     const element = await elementsService.createElement(input, ctx);
     revalidatePath("/inventory");
-    return { ok: true, message: `Elemento ${input.code} creado.`, redirectTo: `/inventory/${element.id}` };
+    return { ok: true, message: `Elemento ${element.code} creado.`, redirectTo: `/inventory/${element.id}` };
   });
 }
 

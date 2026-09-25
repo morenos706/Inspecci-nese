@@ -134,9 +134,8 @@ export const elementSchema = z
   .object({
     id: zId.optional(),
     elementTypeId: z.string({ error: "Selecciona el tipo" }).min(1, "Selecciona el tipo").max(64),
-    code: zRequiredText("El código", 40)
-      .transform((v) => v.toUpperCase())
-      .pipe(z.string().regex(/^[A-Z0-9_-]+$/, "Solo letras, números, guion (-) o guion bajo (_)")),
+    // El código lo asigna el sistema (SEDE-TIPO-NNN); lo que envíe el formulario se ignora.
+    code: z.unknown().optional().transform(() => undefined),
     name: zRequiredText("El nombre", 150),
     description: zOptionalText(1000),
     processId: z.string({ error: "Selecciona el proceso" }).min(1, "Selecciona el proceso"),

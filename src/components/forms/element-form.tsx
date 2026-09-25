@@ -48,33 +48,40 @@ const toInputDate = (d: Date | null | undefined) => (d ? new Date(d).toISOString
 export function ElementForm({
   element,
   types,
-  codeSuggestions,
+  codePreview,
   processes,
   sites,
   users,
 }: {
   element?: ElementFormValues;
   types: TypeOption[];
-  codeSuggestions: Record<string, string>;
+  codePreview: Record<string, string>;
   processes: { id: string; name: string }[];
   sites: { id: string; name: string; zones: { id: string; name: string }[] }[];
   users: { id: string; name: string; jobTitle: string | null }[];
 }) {
   const { onSubmit, pending, errors } = useActionForm(saveElementAction);
   const [typeId, setTypeId] = useState(element?.elementTypeId ?? "");
-  const [code, setCode] = useState(element?.code ?? "");
   const [siteId, setSiteId] = useState(element?.siteId ?? "");
   const [frequency, setFrequency] = useState<InspectionFrequency>(element?.frequency ?? "MONTHLY");
   const [lastDate, setLastDate] = useState(toInputDate(element?.lastInspectionAt));
   const [firstDate, setFirstDate] = useState(element?.lastInspectionAt ? "" : toInputDate(element?.nextInspectionAt));
   const hasInspections = (element?.inspectionCount ?? 0) > 0;
   const zones = sites.find((s) => s.id === siteId)?.zones ?? [];
+  // El código lo asigna el sistema: SEDE-TIPO-NNN. En edición cambia solo si cambian la sede, la zona o el tipo.
+  const moved = element && (siteId !== element.siteId || typeId !== element.elementTypeId);
+  const codeText = element
+    ? moved
+      ? `${element.code} → se actualizará al guardar`
+      : element.code
+    : siteId && typeId
+      ? (codePreview[`${siteId}:${typeId}`] ?? "Se asignará al guardar")
+      : "Elige la sede y el tipo";
 
   function onTypeChange(id: string) {
     const type = types.find((t) => t.id === id);
-    // Al elegir el tipo se sugieren frecuencia y código (si el usuario no escribió uno propio).
+    // Al elegir el tipo se sugiere la frecuencia.
     if (type && !element) setFrequency(type.defaultFrequency);
-    if (!element && (!code || Object.values(codeSuggestions).includes(code))) setCode(codeSuggestions[id] ?? "");
     setTypeId(id);
   }
 
@@ -121,8 +128,15 @@ export function ElementForm({
             </Select>
           </FormField>
           {hasInspections && <input type="hidden" name="elementTypeId" value={typeId} />}
-          <FormField label="Código" errors={errors("code")} hint="Único. Ej.: EXT-023" required>
-            <Input name="code" value={code} onChange={(e) => setCode(e.target.value)} className="uppercase" maxLength={40} />
+          <FormField
+            label="Código (automático)"
+            hint={
+              element
+                ? "Lo asigna el sistema. Cambia solo si cambias la sede, la zona o el tipo."
+                : "Lo asigna el sistema al guardar: SEDE-TIPO-consecutivo."
+            }
+          >
+            <Input value={codeText} readOnly disabled aria-readonly="true" className="font-mono uppercase" />
           </FormField>
           <FormField label="Nombre" errors={errors("name")} required className="sm:col-span-2">
             <Input name="name" defaultValue={element?.name} maxLength={150} placeholder="Ej.: Extintor ABC 20 lb" />

@@ -63,7 +63,7 @@ export async function listElementTypes(query: ListQuery) {
 export async function listElementTypeOptions() {
   return db.elementType.findMany({
     where: { deletedAt: null, active: true },
-    select: { id: true, name: true, codePrefix: true, defaultFrequency: true, defaultFrequencyDays: true },
+    select: { id: true, code: true, name: true, codePrefix: true, defaultFrequency: true, defaultFrequencyDays: true },
     orderBy: { name: "asc" },
   });
 }

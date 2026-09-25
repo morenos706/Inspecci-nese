@@ -50,6 +50,7 @@ export async function listSiteOptions() {
     where: { deletedAt: null, active: true },
     select: {
       id: true,
+      code: true,
       name: true,
       zones: { where: { deletedAt: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
     },

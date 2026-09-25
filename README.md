@@ -73,8 +73,12 @@ vencidas por zona.
 - **Usuarios**: eliminar (baja lógica si tiene historial; bloqueado si tiene
   planes abiertos) y **carga masiva** en la hoja *Usuarios* con correo de
   bienvenida para definir la contraseña.
-- **Código del elemento**: si cambia de sede o zona se recodifica
-  (PRO-EXT-023 → COM-EXT-023); el QR sigue funcionando.
+- **Código del elemento automático y bloqueado**: al crear, el sistema asigna
+  SEDE-TIPO-consecutivo (PRO-EXT-024, con el prefijo del tipo); nadie lo
+  escribe ni lo edita (el servidor ignora cualquier código enviado). Si el
+  elemento cambia de sede, zona o tipo se recodifica (PRO-EXT-023 →
+  COM-EXT-023); el QR sigue funcionando. En la carga masiva, «Código» vacío =
+  automático.
 - **Correos** (*Administración → Correos*): diseño (empresa, colores, logo,
   pie) y plantillas HTML de notificaciones, bienvenida y restablecimiento, con
   variables, vista previa y envío de prueba.
