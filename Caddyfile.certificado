@@ -1,0 +1,13 @@
+# HTTPS con el CERTIFICADO DE LA EMPRESA (servidor interno, sin Let's Encrypt).
+# Copia en la carpeta ./certs:
+#   certificado.crt  → certificado del sitio + certificados intermedios (formato PEM)
+#   certificado.key  → llave privada (PEM, sin contraseña)
+# Se activa con: docker compose -f docker-compose.prod.yml -f docker-compose.certificado.yml up -d --build
+{$DOMAIN} {
+	tls /certs/certificado.crt /certs/certificado.key
+	encode zstd gzip
+	request_body {
+		max_size 15MB
+	}
+	reverse_proxy app:3000
+}

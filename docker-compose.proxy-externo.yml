@@ -1,0 +1,13 @@
+# Variante: la empresa ya tiene su propio proxy / balanceador con HTTPS
+# (IIS ARR, nginx, Apache, F5, FortiGate…). No se usa Caddy: la aplicación
+# queda publicada en HTTP en el puerto APP_PORT (3000 por defecto) SOLO para
+# que el proxy de la empresa la alcance.
+#   docker compose -f docker-compose.prod.yml -f docker-compose.proxy-externo.yml up -d --build
+# El proxy debe: terminar HTTPS, conservar el encabezado Host (o enviar
+# X-Forwarded-Host) y enviar X-Forwarded-Proto: https y X-Forwarded-For.
+services:
+  caddy:
+    profiles: ["deshabilitado"]
+  app:
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-3000}:3000"

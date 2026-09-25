@@ -77,8 +77,8 @@ export function isPermissionCode(value: string): value is PermissionCode {
 
 export const SYSTEM_ROLES = {
   ADMIN: {
-    name: "Administrador",
-    description: "Acceso total al sistema",
+    name: "Super administrador",
+    description: "Acceso total al sistema: usuarios, roles, configuración y todos los módulos",
     permissions: ALL_PERMISSIONS,
   },
   INSPECTOR: {

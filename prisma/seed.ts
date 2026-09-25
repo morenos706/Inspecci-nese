@@ -3,9 +3,13 @@
  *
  *  1. Catálogo (SIEMPRE, idempotente): permisos, roles del sistema y parámetros.
  *     Se puede ejecutar en producción para sincronizar permisos nuevos.
- *  2. Datos de demostración (solo si SEED_DEMO != "false" y la BD no tiene
+ *  2. Datos de demostración (solo si SEED_DEMO=true y la BD no tiene
  *     elementos): procesos, sedes, usuarios, tipos, preguntas, elementos,
  *     inspecciones, hallazgos y planes de acción para probar el flujo completo.
+ *     Por defecto NO se crean: una instalación nueva queda limpia.
+ *  3. Cuenta general de Super Administrador (solo si no existe ningún
+ *     administrador): correo SEED_ADMIN_EMAIL y clave SEED_DEFAULT_PASSWORD,
+ *     que se debe cambiar en el primer ingreso.
  *
  * Uso: npm run db:seed
  */
@@ -61,11 +65,13 @@ async function seedCatalog() {
         },
       });
     } else if (code === "ADMIN") {
-      // El administrador siempre queda con todos los permisos (incluye permisos nuevos).
+      // El Super administrador siempre queda con todos los permisos (incluye permisos nuevos).
       await db.role.update({
         where: { id: existing.id },
         data: {
           isSystem: true,
+          name: def.name,
+          description: def.description,
           permissions: {
             deleteMany: {},
             create: ALL_PERMISSIONS.map((p) => ({ permissionId: permissionIds.get(p)! })),
@@ -183,7 +189,7 @@ function isCompliant(q: QuestionDef, value: string | null): boolean | null {
 }
 
 async function seedDemo() {
-  if (process.env.SEED_DEMO === "false") return console.log("• SEED_DEMO=false: se omiten datos de demostración");
+  if (process.env.SEED_DEMO !== "true") return console.log("• Sin datos de demostración (SEED_DEMO=true para crearlos en desarrollo)");
   if ((await db.element.count()) > 0) return console.log("• Ya existen elementos: se omiten datos de demostración");
 
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 12);
@@ -234,7 +240,7 @@ async function seedDemo() {
 
   // Usuarios
   const userDefs = [
-    { email: "admin@inspecciones.local", name: "Administrador del Sistema", jobTitle: "Coordinador SST", roles: ["ADMIN"], processes: [] },
+    { email: "admin@inspecciones.local", name: "Super Administrador", jobTitle: "Coordinador SST", roles: ["ADMIN"], processes: [] },
     { email: "inspector@inspecciones.local", name: "Carlos Ramírez", jobTitle: "Brigadista", roles: ["INSPECTOR"], processes: ["SEG"] },
     {
       email: "responsable@inspecciones.local",
@@ -619,17 +625,17 @@ async function ensureAdminExists() {
   const adminRole = await db.role.findUniqueOrThrow({ where: { code: "ADMIN" } });
   const admins = await db.user.count({ where: { roles: { some: { roleId: adminRole.id } } } });
   if (admins > 0) return;
-  const email = (process.env.SEED_ADMIN_EMAIL ?? "admin@inspecciones.local").toLowerCase();
+  const email = (process.env.SEED_ADMIN_EMAIL || "superadmin@empresa.local").trim().toLowerCase();
   await db.user.create({
     data: {
       email,
-      name: "Administrador del Sistema",
+      name: "Super Administrador",
       passwordHash: await bcrypt.hash(DEFAULT_PASSWORD, 12),
       mustChangePassword: true,
       roles: { create: [{ roleId: adminRole.id }] },
     },
   });
-  console.log(`✔ Administrador inicial creado: ${email} (debe cambiar la contraseña al ingresar)`);
+  console.log(`✔ Cuenta general de Super Administrador creada: ${email} (debe cambiar la contraseña al ingresar)`);
 }
 
 async function main() {

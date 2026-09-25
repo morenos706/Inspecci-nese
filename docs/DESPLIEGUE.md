@@ -1,5 +1,9 @@
 # Cómo implementar el sistema (paso a paso)
 
+> **¿Instalación en un servidor propio de la empresa (sin nube)?** Usa la guía
+> para TI [`INSTALACION.md`](INSTALACION.md). Este documento cubre las pruebas
+> locales, un ejemplo de publicación en la nube (AWS EC2) y la puesta en marcha.
+
 Esta guía lleva el sistema desde el código hasta el uso real por los
 brigadistas en el celular. Tiene tres etapas:
 
@@ -43,8 +47,10 @@ npm run db:seed             # permisos, roles y datos de demostración
 npm run dev                 # inicia la aplicación
 ```
 
-Abre **http://localhost:3000** e ingresa con `admin@inspecciones.local` /
-`Cambiar123*`. Los demás usuarios de prueba están en el `README.md`.
+Abre **http://localhost:3000** e ingresa con la cuenta de Super Administrador
+de `.env` (`SEED_ADMIN_EMAIL` / `SEED_DEFAULT_PASSWORD`). Para tener datos y
+usuarios de prueba pon `SEED_DEMO=true` en `.env` antes de `npm run db:seed`
+(ver `README.md`).
 
 - Correos (recuperar contraseña, invitaciones): http://localhost:8025
 - Fotos subidas: carpeta `.storage/` del proyecto
@@ -312,8 +318,8 @@ Sigue este orden; cada paso depende del anterior:
 6. **Inventario** → registra los elementos: tipo, código, zona, responsable,
    frecuencia, última inspección y fecha de vencimiento (recarga).
 
-> Para cargar muchos elementos de una vez, envíame el inventario en Excel y lo
-> importamos (se puede agregar una importación masiva).
+> Para cargar muchos elementos, usuarios, tipos y preguntas de una vez usa
+> **Carga masiva** (plantilla Excel con vista previa y validación por fila).
 
 ### 3.2 Instalar la app en los celulares (brigadistas)
 

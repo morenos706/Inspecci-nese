@@ -6,7 +6,11 @@
 #   ln -sf .env.production .env                    # compose lee las variables de .env
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Guía paso a paso: docs/DESPLIEGUE.md
+# Variantes de HTTPS (servidor empresarial):
+#   -f docker-compose.certificado.yml   certificado de la empresa (carpeta ./certs)
+#   -f docker-compose.proxy-externo.yml la empresa ya tiene proxy HTTPS (sin Caddy)
+#
+# Guía de instalación: docs/INSTALACION.md
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,6 +28,7 @@ services:
 
   # Aplica migraciones y sincroniza permisos/roles (y crea el administrador inicial).
   migrate:
+    image: inspecciones-migrate:latest
     build:
       context: .
       target: migrate
@@ -37,6 +42,7 @@ services:
     restart: "no"
 
   app:
+    image: inspecciones-app:latest
     build:
       context: .
       target: runner

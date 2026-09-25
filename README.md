@@ -5,7 +5,8 @@ extintores, botiquines, camillas y cualquier elemento de emergencia
 configurable: inventario, inspecciones dinámicas, hallazgos, planes de acción,
 evidencias, QR, indicadores y reportes.
 
-- **Cómo implementarlo (local, servidor con HTTPS y puesta en marcha): [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**
+- **Instalación en el servidor de la empresa (guía para TI): [`docs/INSTALACION.md`](docs/INSTALACION.md)**
+- Pruebas locales, publicación en la nube y puesta en marcha: [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)
 - Arquitectura, modelo de datos, permisos y roadmap: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Stack: Next.js 16 · React 19 · TypeScript · Tailwind 4 · Prisma 7 · PostgreSQL 16 · Zod 4 · Vitest
 
@@ -120,7 +121,8 @@ cp .env.example .env
 # 3. Servicios de apoyo: PostgreSQL :5432, Mailpit :1025/:8025
 docker compose up -d
 
-# 4. Base de datos: migraciones + seed (catálogo de permisos y datos de prueba)
+# 4. Base de datos: migraciones + seed (permisos, roles y cuenta de Super Administrador)
+#    Para datos y usuarios de PRUEBA pon SEED_DEMO=true en .env antes del seed.
 npm run db:deploy
 npm run db:seed
 
@@ -132,13 +134,18 @@ Abrir http://localhost:3000. Los correos (recuperación de contraseña,
 invitaciones) se ven en Mailpit: http://localhost:8025. Si no usas Docker,
 deja `SMTP_HOST=` vacío en `.env` y los correos se imprimen en la consola.
 
-### Usuarios de prueba
+### Cuenta inicial y usuarios de prueba
+
+Una instalación nueva queda **limpia**: solo la cuenta general de **Super
+Administrador** (`SEED_ADMIN_EMAIL`, clave `SEED_DEFAULT_PASSWORD`, que se cambia
+en el primer ingreso). Los usuarios y datos siguientes existen **solo en
+desarrollo** con `SEED_DEMO=true` y se usan en las secciones «Cómo probar…».
 
 Contraseña de todos: `Cambiar123*` (configurable con `SEED_DEFAULT_PASSWORD`).
 
 | Correo | Rol |
 |---|---|
-| admin@inspecciones.local | Administrador |
+| admin@inspecciones.local | Super administrador |
 | inspector@inspecciones.local | Brigadista |
 | responsable@inspecciones.local | Responsable de proceso + Responsable de acción (Producción) |
 | accion@inspecciones.local | Responsable de acción |
@@ -159,7 +166,7 @@ planes de acción para probar las fases siguientes.
 | `npm test` | Pruebas unitarias (Vitest) |
 | `npm run db:migrate` | Crear/aplicar migraciones en desarrollo |
 | `npm run db:deploy` | Aplicar migraciones (staging/producción) |
-| `npm run db:seed` | Sincronizar permisos/roles y cargar datos de demostración |
+| `npm run db:seed` | Sincronizar permisos/roles, crear la cuenta de Super Administrador (y datos de prueba si `SEED_DEMO=true`) |
 | `npm run db:reset` | Reiniciar la base de datos local (¡borra datos!) |
 | `npm run db:studio` | Explorador de datos Prisma |
 
@@ -268,24 +275,17 @@ En un servidor van al volumen `uploads` o a Amazon S3 / Cloudflare R2.
 
 ## Entornos y despliegue
 
+- **Servidor de la empresa**: [`docs/INSTALACION.md`](docs/INSTALACION.md) — Docker
+  Compose con PostgreSQL, migraciones automáticas y tres opciones de HTTPS
+  (certificado automático, certificado de la empresa o proxy existente),
+  respaldos (`scripts/respaldo.sh`), restauración e instalación sin internet.
+- **Paquete de entrega**: `sh scripts/empaquetar.sh` → `dist/inspecciones-emergencia-<versión>.zip`
+  (código + configuración + documentación, sin secretos ni dependencias).
 - `APP_ENV` (`development` | `staging` | `production`) define el entorno lógico;
   `NODE_ENV` lo gestiona Next (`production` en staging y producción).
 - La app valida las variables al arrancar (`src/lib/env.ts`) y se niega a
   iniciar en producción con el `AUTH_SECRET` de ejemplo.
-
-```bash
-# Imagen de la aplicación (Next standalone, usuario no root, healthcheck)
-docker build -t inspecciones:latest .
-# Imagen del job de migraciones + sincronización de permisos
-docker build --target migrate -t inspecciones-migrate:latest .
-
-# Todo en un servidor: postgres + migraciones + app + Caddy (HTTPS automático)
-cp .env.production.example .env.production   # completar valores reales
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-```
-
-En producción: usar HTTPS (la cookie de sesión es `__Host-session`, `Secure`),
-PostgreSQL gestionado con backups, y un bucket S3/R2 privado.
+- En producción se exige HTTPS (la cookie de sesión es `__Host-session`, `Secure`).
 
 ## Problemas frecuentes
 

@@ -48,3 +48,10 @@ next-env.d.ts
 /.storage/
 !.env.production.example
 /backups/
+
+# certificados HTTPS de la empresa
+/certs/*
+!/certs/LEEME.txt
+
+# paquetes de entrega e imágenes exportadas
+/dist/

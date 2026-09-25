@@ -1,0 +1,14 @@
+Coloca aquí el certificado HTTPS de la empresa (solo si usas docker-compose.certificado.yml):
+
+  certificado.crt   Certificado del sitio + intermedios, formato PEM (-----BEGIN CERTIFICATE-----)
+  certificado.key   Llave privada, formato PEM, sin contraseña
+
+Si TI entrega un archivo .pfx / .p12, conviértelo así:
+  openssl pkcs12 -in archivo.pfx -clcerts -nokeys -out certificado.crt
+  openssl pkcs12 -in archivo.pfx -nocerts -nodes  -out certificado.key
+
+Importante: los celulares deben confiar en ese certificado (emitido por una CA pública
+o por la CA corporativa instalada en los equipos). Sin HTTPS válido la cámara no funciona
+(escaneo QR y fotos).
+
+Estos archivos NUNCA se suben al repositorio.

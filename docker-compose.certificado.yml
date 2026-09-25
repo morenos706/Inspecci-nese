@@ -1,0 +1,8 @@
+# Variante: HTTPS con el certificado de la empresa (ver Caddyfile.certificado y certs/LEEME.txt).
+#   docker compose -f docker-compose.prod.yml -f docker-compose.certificado.yml up -d --build
+services:
+  caddy:
+    volumes:
+      - ./Caddyfile.certificado:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddydata:/data
