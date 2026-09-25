@@ -1,13 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCheck } from "lucide-react";
+import { CheckCheck, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NOTIFICATIONS_CHANGED } from "@/components/notifications/notification-bell";
-import { markAllNotificationsReadAction, setEmailNotificationsAction } from "@/server/actions/notifications.actions";
+import { markAllNotificationsReadAction, sendTestEmailAction, setEmailNotificationsAction } from "@/server/actions/notifications.actions";
 
 export function MarkAllReadButton({ disabled }: { disabled?: boolean }) {
   const [pending, startTransition] = useTransition();
@@ -52,5 +52,34 @@ export function EmailPreferenceToggle({ enabled }: { enabled: boolean }) {
         });
       }}
     />
+  );
+}
+
+export function TestEmailButton() {
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  return (
+    <div className="space-y-3">
+      <Button
+        variant="outline"
+        loading={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const r = await sendTestEmailAction();
+            setResult({ ok: r.ok, message: r.message ?? "" });
+            if (r.ok) toast.success("Correo de prueba enviado");
+            else toast.error("No se pudo enviar el correo de prueba");
+          })
+        }
+      >
+        <Send className="h-4 w-4" aria-hidden />
+        Enviar correo de prueba
+      </Button>
+      {result && (
+        <p role="status" className={result.ok ? "text-sm text-success" : "text-sm text-danger"}>
+          {result.message}
+        </p>
+      )}
+    </div>
   );
 }

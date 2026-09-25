@@ -2,7 +2,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { ChangePasswordForm } from "@/components/forms/password-forms";
-import { EmailPreferenceToggle } from "@/components/notifications/notification-actions";
+import { EmailPreferenceToggle, TestEmailButton } from "@/components/notifications/notification-actions";
+import { mailConfigSummary } from "@/server/mail/mailer";
 import { requirePageUser } from "@/server/auth/current-user";
 import { getEmailPreference } from "@/server/services/notifications.service";
 
@@ -52,6 +53,7 @@ export default async function ProfilePage() {
             <EmailPreferenceToggle enabled={emailNotifications} />
           </CardBody>
         </Card>
+        {user.permissions.has("settings.manage") && <MailSettingsCard email={user.email} />}
         <Card>
           <CardHeader title="Cambiar contraseña" description="Al cambiarla se cerrarán tus sesiones en otros dispositivos." />
           <CardBody>
@@ -60,5 +62,33 @@ export default async function ProfilePage() {
         </Card>
       </div>
     </>
+  );
+}
+
+/** Diagnóstico del correo del sistema (solo administradores). La contraseña nunca se muestra. */
+function MailSettingsCard({ email }: { email: string }) {
+  const mail = mailConfigSummary();
+  const rows: [string, string][] = [
+    ["Servidor (SMTP_HOST)", mail.host || "— vacío: los correos NO se envían"],
+    ["Puerto / cifrado", `${mail.port} · SMTP_SECURE=${mail.secure ? "true" : "false"}`],
+    ["Usuario (SMTP_USER)", mail.user || "—"],
+    ["Contraseña (SMTP_PASSWORD)", mail.hasPassword ? "configurada" : "— vacía"],
+    ["Remitente (MAIL_FROM)", mail.from],
+  ];
+  return (
+    <Card>
+      <CardHeader title="Correo del sistema" description={`Envía un correo de prueba a ${email} y muestra el error exacto si falla.`} />
+      <CardBody className="space-y-4">
+        <dl className="grid gap-2 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
+          {rows.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-subtle">{k}</dt>
+              <dd className="break-all font-medium">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <TestEmailButton />
+      </CardBody>
+    </Card>
   );
 }
