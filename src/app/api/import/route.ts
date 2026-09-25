@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requirePermission } from "@/server/auth/current-user";
 import { DomainError } from "@/server/errors";
 import { assertSameOrigin, errorResponse } from "@/server/http";
 import { serviceContext } from "@/server/services/context";
 import { analyzeImport, applyImport, MAX_IMPORT_BYTES } from "@/server/services/import.service";
+import { sendWelcomeEmails } from "@/server/services/import-users";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +24,12 @@ export async function POST(request: Request) {
     const buffer = await file.arrayBuffer();
 
     if (form.get("mode") === "apply") {
-      const summary = await applyImport(buffer, await serviceContext(user));
-      return NextResponse.json({ ok: true, summary });
+      const { summary, invitedUserIds } = await applyImport(buffer, await serviceContext(user));
+      // Las invitaciones se envían después de responder (no bloquean la carga).
+      if (invitedUserIds.length) after(() => sendWelcomeEmails(invitedUserIds));
+      return NextResponse.json({ ok: true, summary, invited: invitedUserIds.length });
     }
-    const { preview } = await analyzeImport(buffer);
+    const { preview } = await analyzeImport(buffer, user.id);
     return NextResponse.json({ ok: true, preview });
   } catch (error) {
     return errorResponse(error);

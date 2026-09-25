@@ -4,6 +4,8 @@ import { db } from "@/server/db";
 import { env } from "@/lib/env";
 import { sendMail } from "@/server/mail/mailer";
 import { notificationEmail } from "@/emails/notification";
+import type { EmailConfig } from "@/lib/email-templates";
+import { getEmailConfig } from "@/server/mail/templates";
 import { canRetry, EMAIL_MAX_AGE_HOURS, EMAIL_MAX_ATTEMPTS, safeInternalLink } from "@/lib/notifications";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PermissionCode } from "@/lib/permissions";
@@ -198,6 +200,7 @@ export async function dispatchPendingEmails(limit = 50, now = new Date()): Promi
     },
   });
 
+  let emailConfig: EmailConfig | undefined;
   for (const d of pending) {
     if (d.attempts > 0 && !canRetry(d.attempts, d.updatedAt, now)) continue;
     const { user } = d.notification;
@@ -216,15 +219,16 @@ export async function dispatchPendingEmails(limit = 50, now = new Date()): Promi
     });
     if (claim.count === 0) continue;
     try {
+      emailConfig ??= await getEmailConfig();
       await sendMail(
-        notificationEmail({
+        await notificationEmail({
           to: user.email,
           name: user.name,
           title: d.notification.title,
           body: d.notification.body,
           type: d.notification.type,
           url: `${env.APP_URL}${safeInternalLink(d.notification.link)}`,
-        }),
+        }, emailConfig),
       );
       await db.notificationDelivery.update({ where: { id: d.id }, data: { status: "SENT", sentAt: new Date(), lastError: null } });
       result.sent++;

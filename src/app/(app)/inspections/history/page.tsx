@@ -7,7 +7,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
-import { INSPECTION_RESULT_LABELS, INSPECTION_STATUS_LABELS } from "@/lib/labels";
+import { INSPECTION_RESULT_LABELS, INSPECTION_REVIEW_LABELS, INSPECTION_REVIEW_TONES, INSPECTION_STATUS_LABELS } from "@/lib/labels";
 import { formatDateTime, formatNumber } from "@/lib/utils";
 import { getReadScope, requirePagePermission } from "@/server/auth/current-user";
 import { inspectionListQuerySchema, listInspections } from "@/server/services/inspections.service";
@@ -52,6 +52,12 @@ export default async function InspectionHistoryPage({ searchParams }: PageProps<
               ],
             },
             {
+              name: "review",
+              label: "Revisión",
+              value: query.review,
+              options: (["PENDING_REVIEW", "REVIEWED", "ARCHIVED"] as const).map((r) => ({ value: r, label: INSPECTION_REVIEW_LABELS[r] })),
+            },
+            {
               name: "status",
               label: "Estado",
               value: query.status,
@@ -65,6 +71,7 @@ export default async function InspectionHistoryPage({ searchParams }: PageProps<
           {query.process && <input type="hidden" name="process" value={query.process} />}
           {query.result && <input type="hidden" name="result" value={query.result} />}
           {query.status && <input type="hidden" name="status" value={query.status} />}
+          {query.review && <input type="hidden" name="review" value={query.review} />}
           <label className="text-sm">
             <span className="mb-1 block text-subtle">Desde</span>
             <Input type="date" name="from" defaultValue={query.from} className="h-10" />
@@ -112,6 +119,12 @@ export default async function InspectionHistoryPage({ searchParams }: PageProps<
                   <Badge>{INSPECTION_STATUS_LABELS[i.status]}</Badge>
                 ),
             },
+            {
+              key: "review",
+              header: "Revisión",
+              cell: (i) =>
+                i.reviewStatus ? <Badge tone={INSPECTION_REVIEW_TONES[i.reviewStatus]}>{INSPECTION_REVIEW_LABELS[i.reviewStatus]}</Badge> : "—",
+            },
           ]}
         />
         <Pagination
@@ -125,6 +138,7 @@ export default async function InspectionHistoryPage({ searchParams }: PageProps<
             process: query.process,
             result: query.result,
             status: query.status,
+            review: query.review,
             from: query.from,
             to: query.to,
           }}

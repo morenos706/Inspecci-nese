@@ -39,9 +39,11 @@ export function notificationTone(type: string, title = ""): NotificationTone {
     case "action_plan.due_soon":
     case "element.expiry_soon":
     case "action_plan.rejected":
+    case "inspection.review":
       return "warning";
     case "action_plan.verified":
     case "action_plan.closed":
+    case "inspection.reviewed":
       return "success";
     case "action_plan.assigned":
     case "action_plan.solved":

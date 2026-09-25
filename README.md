@@ -63,6 +63,22 @@ del proceso), plan por vencer (3 días), plan vencido (semanal, al responsable y
 gestores), elemento por vencer (30 y 7 días) y resumen diario de inspecciones
 vencidas por zona.
 
+**Flujo de revisión, usuarios y correos ✅**:
+- **Revisión de inspecciones**: al finalizar, una inspección 100 % conforme se
+  **archiva**; si tiene hallazgos pasa **En revisión** (las respuestas que no
+  cumplen sin hallazgo descrito se registran solas). El brigadista solo
+  describe el hallazgo; quien gestiona el proceso (menú **Revisión**) asigna
+  la acción de mejora, el responsable y la fecha límite, o lo cierra como «no
+  procede». Al terminar, la inspección queda **Revisada** y se notifica.
+- **Usuarios**: eliminar (baja lógica si tiene historial; bloqueado si tiene
+  planes abiertos) y **carga masiva** en la hoja *Usuarios* con correo de
+  bienvenida para definir la contraseña.
+- **Código del elemento**: si cambia de sede o zona se recodifica
+  (PRO-EXT-023 → COM-EXT-023); el QR sigue funcionando.
+- **Correos** (*Administración → Correos*): diseño (empresa, colores, logo,
+  pie) y plantillas HTML de notificaciones, bienvenida y restablecimiento, con
+  variables, vista previa y envío de prueba.
+
 **Carga masiva, reportes y QR ✅** (Fases 6 y 8):
 - **Carga masiva** (*Configuración → Carga masiva*): plantilla Excel con listas
   desplegables y hojas **Sedes, Procesos, Tipos, Preguntas, Zonas y

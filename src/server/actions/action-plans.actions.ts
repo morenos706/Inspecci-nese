@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ActionState } from "@/lib/action-state";
 import { zId } from "@/lib/validation/form";
+import { reviewAssignSchema, reviewDismissSchema } from "@/lib/validation/findings";
+import { formatNumber } from "@/lib/utils";
 import { parseForm, parseInput, runAction } from "@/server/actions/run-action";
 import { requirePermission, requireUser } from "@/server/auth/current-user";
 import { serviceContext } from "@/server/services/context";
@@ -70,5 +72,29 @@ export async function deleteEvidenceAction(evidenceId: string): Promise<ActionSt
     const ctx = await serviceContext(await requirePermission("evidences.upload"));
     await evidences.deleteEvidence(parseInput(zId, evidenceId), ctx);
     return { ok: true, message: "Archivo eliminado." };
+  });
+}
+
+export async function assignFindingPlanAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await serviceContext(await requirePermission("actions.manage"));
+    const input = parseForm(reviewAssignSchema, formData);
+    const plan = await plans.assignFindingPlan(input, ctx);
+    const inspectionId = parseInput(zId, formData.get("inspectionId"));
+    revalidatePath(`/inspections/${inspectionId}`);
+    revalidatePath("/review");
+    return { ok: true, message: `Plan ${formatNumber(plan.number)} asignado. Se notificó al responsable.` };
+  });
+}
+
+export async function dismissFindingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await serviceContext(await requirePermission("actions.manage"));
+    const input = parseForm(reviewDismissSchema, formData);
+    await plans.dismissFinding(input, ctx);
+    const inspectionId = parseInput(zId, formData.get("inspectionId"));
+    revalidatePath(`/inspections/${inspectionId}`);
+    revalidatePath("/review");
+    return { ok: true, message: "Hallazgo cerrado como «no procede»." };
   });
 }

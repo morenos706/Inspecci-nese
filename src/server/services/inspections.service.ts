@@ -5,7 +5,9 @@ import { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/server/audit";
 import { AuthorizationError, DomainError, NotFoundError, ValidationError } from "@/server/errors";
 import { getReadScope, type CurrentUser } from "@/server/auth/current-user";
-import { evaluateCompliance, normalizeAnswerValue } from "@/lib/inspection-rules";
+import { evaluateCompliance, formatAnswerValue, normalizeAnswerValue } from "@/lib/inspection-rules";
+import { formatNumber } from "@/lib/utils";
+import { notify, usersWithPermissionInProcess } from "@/server/services/notifications.service";
 import { computeInspectionResult } from "@/lib/inspection-result";
 import { scheduleFields } from "@/lib/scheduling";
 import { todayISO, zonedDayBoundary } from "@/lib/utils";
@@ -247,7 +249,10 @@ async function loadOwnInProgress(inspectionId: string, user: CurrentUser) {
       status: true,
       inspectorId: true,
       templateId: true,
-      element: { select: { id: true, elementTypeId: true, frequency: true, frequencyDays: true } },
+      number: true,
+      processId: true,
+      siteId: true,
+      element: { select: { id: true, code: true, name: true, elementTypeId: true, frequency: true, frequencyDays: true } },
     },
   });
   if (!inspection) throw new NotFoundError("La inspección no existe.");
@@ -415,11 +420,29 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
   const [questions, answers] = await Promise.all([
     db.inspectionQuestion.findMany({
       where: { templateId: inspection.templateId, active: true, deletedAt: null },
-      select: { id: true, required: true, responseType: true, text: true, tracksExpiry: true, order: true },
+      select: {
+        id: true,
+        required: true,
+        responseType: true,
+        text: true,
+        tracksExpiry: true,
+        order: true,
+        generatesFinding: true,
+        defaultPriority: true,
+        options: true,
+        complianceRule: true,
+      },
     }),
     db.inspectionAnswer.findMany({
       where: { inspectionId },
-      select: { questionId: true, value: true, isCompliant: true, _count: { select: { evidences: { where: { deletedAt: null } } } } },
+      select: {
+        id: true,
+        questionId: true,
+        value: true,
+        isCompliant: true,
+        findings: { select: { id: true } },
+        _count: { select: { evidences: { where: { deletedAt: null } } } },
+      },
     }),
   ]);
   const photoCount = Object.fromEntries(answers.map((a) => [a.questionId, a._count.evidences]));
@@ -452,10 +475,36 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
     frequencyDays: inspection.element.frequencyDays,
   });
 
-  await db.$transaction(async (tx) => {
+  // Toda respuesta que no cumple (en preguntas que generan hallazgo) queda como
+  // hallazgo, aunque el brigadista no lo haya descrito: nada se pierde en la revisión.
+  const autoFindings = answers
+    .filter((a) => a.isCompliant === false && a.findings.length === 0)
+    .map((a) => ({ answer: a, question: questions.find((q) => q.id === a.questionId) }))
+    .filter((x): x is { answer: (typeof answers)[number]; question: (typeof questions)[number] } => Boolean(x.question?.generatesFinding));
+
+  const review = await db.$transaction(async (tx) => {
+    for (const { answer, question } of autoFindings) {
+      await tx.finding.create({
+        data: {
+          inspectionId,
+          answerId: answer.id,
+          questionId: question.id,
+          elementId: inspection.element.id,
+          processId: inspection.processId,
+          siteId: inspection.siteId,
+          description: `No cumple: ${question.text.replace(/[¿?]/g, "")} (respuesta: ${formatAnswerValue(question, answer.value)}).`,
+          priority: question.defaultPriority,
+          createdById: ctx.user.id,
+        },
+      });
+    }
+    const findings = await tx.finding.findMany({ where: { inspectionId }, select: { priority: true } });
+    const reviewStatus = findings.length > 0 ? ("PENDING_REVIEW" as const) : ("ARCHIVED" as const);
     await tx.inspection.update({
       where: { id: inspectionId },
       data: {
+        reviewStatus,
+        reviewedAt: reviewStatus === "ARCHIVED" ? completedAt : null,
         status: "COMPLETED",
         completedAt,
         notes: notes || null,
@@ -483,12 +532,28 @@ export async function finalizeInspection(inspectionId: string, notes: string | n
           compliancePct: summary.compliancePct,
           nonCompliantCount: summary.nonCompliantCount,
           nextInspectionAt: schedule.nextInspectionAt,
+          reviewStatus,
+          autoFindings: autoFindings.length,
         },
       },
       tx,
     );
+    if (reviewStatus === "PENDING_REVIEW") {
+      const critical = findings.some((f) => f.priority === "CRITICAL");
+      await notify(
+        {
+          userIds: await usersWithPermissionInProcess("actions.manage", inspection.processId, "actions.read.all", tx),
+          type: critical ? "finding.critical" : "inspection.review",
+          title: `${critical ? "CRÍTICO · " : ""}Inspección ${formatNumber(inspection.number)} por revisar: ${findings.length} hallazgo(s)`,
+          body: `${inspection.element.code} · ${inspection.element.name}. Asigna el plan de acción y el responsable de cada hallazgo.`,
+          link: `/inspections/${inspectionId}`,
+        },
+        tx,
+      );
+    }
+    return { reviewStatus, findings: findings.length };
   });
-  return { ...summary, nextInspectionAt: schedule.nextInspectionAt };
+  return { ...summary, nextInspectionAt: schedule.nextInspectionAt, ...review };
 }
 
 export async function cancelInspection(inspectionId: string, ctx: ServiceContext) {
@@ -525,6 +590,10 @@ export async function getInspectionDetail(inspectionId: string, user: CurrentUse
       nonCompliantCount: true,
       compliancePct: true,
       inspectorId: true,
+      processId: true,
+      reviewStatus: true,
+      reviewedAt: true,
+      reviewedBy: { select: { name: true } },
       inspector: { select: { name: true } },
       process: { select: { name: true } },
       site: { select: { name: true } },
@@ -534,6 +603,7 @@ export async function getInspectionDetail(inspectionId: string, user: CurrentUse
           code: true,
           name: true,
           location: true,
+          responsibleId: true,
           nextInspectionAt: true,
           elementType: { select: { name: true } },
           zone: { select: { id: true, name: true } },
@@ -563,8 +633,10 @@ export async function getInspectionDetail(inspectionId: string, user: CurrentUse
           dueDate: true,
           requiredAction: true,
           answerId: true,
+          observations: true,
           responsible: { select: { name: true } },
           evidences: { where: { deletedAt: null }, select: { id: true, fileName: true } },
+          actionPlans: { orderBy: { number: "asc" }, select: { id: true, number: true, responsible: { select: { name: true } } } },
         },
       },
     },
@@ -580,6 +652,7 @@ export const inspectionListQuerySchema = z.object({
   process: z.string().max(64).optional().catch(undefined),
   result: z.enum(["COMPLIANT", "NON_COMPLIANT"]).optional().catch(undefined),
   status: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional().catch(undefined),
+  review: z.enum(["PENDING_REVIEW", "REVIEWED", "ARCHIVED"]).optional().catch(undefined),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
 });
@@ -594,6 +667,7 @@ export async function listInspections(query: InspectionListQuery, user: CurrentU
       query.site ? { siteId: query.site } : {},
       query.process ? { processId: query.process } : {},
       query.result ? { result: query.result } : {},
+      query.review ? { reviewStatus: query.review } : {},
       query.from ? { [dateField]: { gte: zonedDayBoundary(query.from, "start", env.APP_TIMEZONE) } } : {},
       query.to ? { [dateField]: { lte: zonedDayBoundary(query.to, "end", env.APP_TIMEZONE) } } : {},
       query.q
@@ -620,6 +694,7 @@ export async function listInspections(query: InspectionListQuery, user: CurrentU
         completedAt: true,
         compliancePct: true,
         nonCompliantCount: true,
+        reviewStatus: true,
         inspector: { select: { name: true } },
         site: { select: { name: true } },
         process: { select: { name: true } },

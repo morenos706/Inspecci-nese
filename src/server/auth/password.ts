@@ -24,3 +24,12 @@ export async function verifyPasswordTimingSafe(plain: string, hash: string | nul
   }
   return bcrypt.compare(plain, hash);
 }
+
+/**
+ * Hash de una contraseña aleatoria que nadie conoce (usuarios invitados que
+ * definirán la suya con el enlace del correo). Coste bajo: el secreto es de
+ * 256 bits, no se puede adivinar, y así una carga masiva no tarda minutos.
+ */
+export function unusablePasswordHash(randomSecret: string): Promise<string> {
+  return bcrypt.hash(randomSecret, 4);
+}

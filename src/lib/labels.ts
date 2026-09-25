@@ -7,6 +7,7 @@ import type {
   ElementStatus,
   FindingSource,
   InspectionResult,
+  InspectionReview,
   InspectionStatus,
   Priority,
   ResponseType,
@@ -84,6 +85,18 @@ export const INSPECTION_STATUS_LABELS: Record<InspectionStatus, string> = {
 export const INSPECTION_RESULT_LABELS: Record<InspectionResult, string> = {
   COMPLIANT: "Cumple",
   NON_COMPLIANT: "No cumple",
+};
+
+export const INSPECTION_REVIEW_LABELS: Record<InspectionReview, string> = {
+  PENDING_REVIEW: "En revisión",
+  REVIEWED: "Revisada",
+  ARCHIVED: "Archivada",
+};
+
+export const INSPECTION_REVIEW_TONES: Record<InspectionReview, BadgeTone> = {
+  PENDING_REVIEW: "warning",
+  REVIEWED: "info",
+  ARCHIVED: "success",
 };
 
 export const FINDING_SOURCE_LABELS: Record<FindingSource, string> = {

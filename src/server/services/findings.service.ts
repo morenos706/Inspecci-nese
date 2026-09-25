@@ -4,12 +4,8 @@ import { db } from "@/server/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { getReadScope, type CurrentUser } from "@/server/auth/current-user";
 import { paginated, paginationArgs } from "@/server/services/pagination";
-import { notify, usersWithPermissionInProcess } from "@/server/services/notifications.service";
-import { formatDate, formatNumber } from "@/lib/utils";
 import { audit } from "@/server/audit";
-import { AuthorizationError, DomainError, NotFoundError, ValidationError } from "@/server/errors";
-import { env } from "@/lib/env";
-import { todayISO } from "@/lib/utils";
+import { AuthorizationError, DomainError, NotFoundError } from "@/server/errors";
 import type { FindingFromAnswerInput } from "@/lib/validation/findings";
 import { auditCtx, type ServiceContext } from "@/server/services/context";
 import { storage } from "@/server/storage";
@@ -19,8 +15,8 @@ export const dueDateFromISO = (iso: string) => new Date(`${iso}T12:00:00.000Z`);
 
 /**
  * Registra un hallazgo desde una respuesta que NO cumple, durante la
- * inspección. Crea también el primer plan de acción (acción requerida,
- * responsable, fecha límite), que el responsable gestiona en la Fase 4.
+ * inspección. Solo describe lo encontrado: al finalizar, la inspección pasa a
+ * revisión y el responsable del proceso asigna el plan de acción.
  */
 export async function createFindingFromAnswer(input: FindingFromAnswerInput, ctx: ServiceContext) {
   if (!ctx.user.permissions.has("findings.create")) throw new AuthorizationError();
@@ -38,16 +34,8 @@ export async function createFindingFromAnswer(input: FindingFromAnswerInput, ctx
   if (inspection.inspectorId !== ctx.user.id) throw new AuthorizationError("Solo quien realiza la inspección puede registrar hallazgos en ella.");
   if (inspection.status !== "IN_PROGRESS") throw new DomainError("La inspección ya fue finalizada.");
   if (answer.isCompliant !== false) throw new DomainError("Solo se registran hallazgos en respuestas que no cumplen.");
-  if (input.dueDate < todayISO(new Date(), env.APP_TIMEZONE)) {
-    throw new ValidationError({ dueDate: ["La fecha límite no puede ser anterior a hoy"] });
-  }
-  const responsible = await db.user.findFirst({
-    where: { id: input.responsibleId, active: true, deletedAt: null },
-    select: { id: true },
-  });
-  if (!responsible) throw new ValidationError({ responsibleId: ["Responsable inválido o inactivo"] });
+  if (await db.finding.count({ where: { answerId: answer.id } })) throw new DomainError("Esta respuesta ya tiene un hallazgo registrado.");
 
-  const dueDate = dueDateFromISO(input.dueDate);
   return db.$transaction(async (tx) => {
     const finding = await tx.finding.create({
       data: {
@@ -59,54 +47,12 @@ export async function createFindingFromAnswer(input: FindingFromAnswerInput, ctx
         siteId: inspection.siteId,
         description: input.description,
         priority: input.priority,
-        requiredAction: input.requiredAction,
-        responsibleId: responsible.id,
-        dueDate,
+        requiredAction: input.requiredAction ?? null,
         createdById: ctx.user.id,
       },
       select: { id: true, number: true },
     });
-    const plan = await tx.actionPlan.create({
-      data: {
-        findingId: finding.id,
-        action: input.requiredAction,
-        responsibleId: responsible.id,
-        dueDate,
-        createdById: ctx.user.id,
-      },
-      select: { id: true },
-    });
-    await tx.actionPlanEvent.create({
-      data: { actionPlanId: plan.id, userId: ctx.user.id, toStatus: "PENDING", comment: "Plan creado desde la inspección" },
-    });
-    await notify(
-      {
-        userIds: [responsible.id],
-        type: "action_plan.assigned",
-        title: `Nuevo hallazgo ${formatNumber(finding.number)} asignado`,
-        body: `${input.requiredAction} · Fecha límite ${formatDate(dueDate)}`,
-        link: `/action-plans/${plan.id}`,
-      },
-      tx,
-    );
-    if (input.priority === "CRITICAL") {
-      await notify(
-        {
-          userIds: await usersWithPermissionInProcess("actions.manage", inspection.processId, "actions.read.all", tx),
-          excludeUserId: responsible.id,
-          type: "finding.critical",
-          title: `Hallazgo CRÍTICO ${formatNumber(finding.number)}`,
-          body: `${input.description}\nAcción requerida: ${input.requiredAction}. Fecha límite ${formatDate(dueDate)}.`,
-          link: `/findings/${finding.id}`,
-        },
-        tx,
-      );
-    }
-    await audit(
-      auditCtx(ctx),
-      { action: "finding.create", entityType: "Finding", entityId: finding.id, after: { ...input, actionPlanId: plan.id } },
-      tx,
-    );
+    await audit(auditCtx(ctx), { action: "finding.create", entityType: "Finding", entityId: finding.id, after: input }, tx);
     return finding;
   });
 }

@@ -45,3 +45,19 @@ export async function unlockUserAction(userId: string): Promise<ActionState> {
     return { ok: true, message: "Usuario desbloqueado." };
   });
 }
+
+export async function deleteUserAction(userId: string): Promise<ActionState> {
+  return runAction(async () => {
+    const ctx = await serviceContext(await requirePermission("users.manage"));
+    const mode = await usersService.deleteUser(parseInput(zId, userId), ctx);
+    revalidatePath("/admin/users");
+    return {
+      ok: true,
+      message:
+        mode === "deleted"
+          ? "Usuario eliminado."
+          : "Usuario eliminado. Su nombre se conserva en el historial de inspecciones y hallazgos.",
+      redirectTo: "/admin/users",
+    };
+  });
+}

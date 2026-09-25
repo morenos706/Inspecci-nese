@@ -463,6 +463,31 @@ botones subir/bajar (accesibles y usables en móvil).
   `applyImport` (una transacción, zonas primero, `scheduleFields`, auditoría
   `import.inventory`). Límites: 5 MB y 5000 filas; permiso `elements.manage`.
 
+## Revisión de inspecciones (aprobación)
+
+- `Inspection.reviewStatus`: `ARCHIVED` (sin hallazgos), `PENDING_REVIEW` y
+  `REVIEWED` (con `reviewedAt` / `reviewedById`). Se fija en
+  `finalizeInspection`; allí mismo se crean hallazgos automáticos para las
+  respuestas no conformes (con `generatesFinding`) que el brigadista no
+  describió, y se avisa a quienes tienen `actions.manage` en el proceso.
+- El hallazgo del brigadista ya no crea plan: `assignFindingPlan` (acción,
+  responsable, fecha, prioridad → `createActionPlan`) o `dismissFinding`
+  («no procede», cierra el hallazgo). `completeReviewIfDone` marca la
+  inspección como revisada cuando ningún hallazgo abierto queda sin plan (se
+  llama también al crear planes desde la página del hallazgo).
+- Bandeja `/review` (permiso `actions.manage`, alcance por proceso) y aviso en
+  Inicio. Migración: las inspecciones anteriores quedan `REVIEWED` (con
+  hallazgos) o `ARCHIVED`.
+
+## Plantillas de correo
+
+- `src/lib/email-templates.ts` (puro, servidor y navegador): esquema,
+  valores por defecto, variables `{{…}}` con escape HTML, limpieza del HTML
+  del administrador y `renderEmail` (marca + cuerpo + botón + pie + versión
+  texto). `src/server/mail/templates.ts` lee/guarda la configuración en
+  `SystemSetting` (`email.templates`); todos los correos pasan por
+  `buildEmail`. La vista previa del editor usa un iframe `sandbox` sin scripts.
+
 ## Estrategia de archivos
 
 Decisión de implementación (Fase 3): las fotos se **comprimen en el navegador**

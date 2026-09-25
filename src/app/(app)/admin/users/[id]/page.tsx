@@ -1,4 +1,4 @@
-import { KeyRound, LockOpen } from "lucide-react";
+import { KeyRound, LockOpen, Trash2 } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -6,7 +6,7 @@ import { UserForm } from "@/components/forms/user-form";
 import { formatDateTime } from "@/lib/utils";
 import { requirePagePermission } from "@/server/auth/current-user";
 import { orNotFound } from "@/server/page-helpers";
-import { sendUserPasswordResetAction, unlockUserAction } from "@/server/actions/users.actions";
+import { deleteUserAction, sendUserPasswordResetAction, unlockUserAction } from "@/server/actions/users.actions";
 import { listProcessOptions } from "@/server/services/processes.service";
 import { listRoleOptions } from "@/server/services/roles.service";
 import { getUser } from "@/server/services/users.service";
@@ -14,7 +14,7 @@ import { getUser } from "@/server/services/users.service";
 export const metadata = { title: "Editar usuario" };
 
 export default async function EditUserPage({ params }: PageProps<"/admin/users/[id]">) {
-  await requirePagePermission("users.manage");
+  const me = await requirePagePermission("users.manage");
   const { id } = await params;
   const user = await orNotFound(getUser(id));
   const [roles, processes] = await Promise.all([listRoleOptions(), listProcessOptions()]);
@@ -48,6 +48,16 @@ export default async function EditUserPage({ params }: PageProps<"/admin/users/[
                 confirmVariant="primary"
               >
                 <KeyRound className="h-4 w-4" aria-hidden /> Restablecer contraseña
+              </ConfirmButton>
+            )}
+            {user.id !== me.id && (
+              <ConfirmButton
+                action={deleteUserAction.bind(null, user.id)}
+                title={`Eliminar a ${user.name}`}
+                description="Perderá el acceso de inmediato y su correo quedará libre. Si ya realizó inspecciones o gestionó hallazgos, su nombre se conserva en ese historial. Si tiene planes de acción abiertos, primero debes reasignarlos."
+                confirmLabel="Eliminar usuario"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
               </ConfirmButton>
             )}
           </>

@@ -5,9 +5,12 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { InspectionRunner } from "@/components/inspections/inspection-runner";
+import { ReviewPanel } from "@/components/inspections/review-panel";
 import { formatAnswerValue, type AnswerValue } from "@/lib/inspection-rules";
 import {
   INSPECTION_RESULT_LABELS,
+  INSPECTION_REVIEW_LABELS,
+  INSPECTION_REVIEW_TONES,
   INSPECTION_STATUS_LABELS,
   PRIORITY_LABELS,
   PRIORITY_TONES,
@@ -18,6 +21,7 @@ import { cn, formatDate, formatDateTime, formatNumber, todayISO } from "@/lib/ut
 import { env } from "@/lib/env";
 import { requirePageUser } from "@/server/auth/current-user";
 import { orNotFound } from "@/server/page-helpers";
+import { managesProcess } from "@/server/services/action-plans.service";
 import { getInspectionDetail, getInspectionForRunner } from "@/server/services/inspections.service";
 import { listUserOptions } from "@/server/services/users.service";
 
@@ -45,7 +49,6 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
   if (user.permissions.has("inspections.perform")) {
     const run = await getInspectionForRunner(id, user);
     if (run) {
-      const users = await listUserOptions();
       const answers = Object.fromEntries(
         run.answers.map((a) => [
           a.questionId,
@@ -77,7 +80,6 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
           }}
           questions={run.questions}
           answers={answers}
-          users={users}
           today={todayISO(new Date(), env.APP_TIMEZONE)}
         />
       );
@@ -88,6 +90,9 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
   const inspection = await orNotFound(getInspectionDetail(id, user));
   const compliant = inspection.result === "COMPLIANT";
   const findingsByAnswer = new Map(inspection.findings.filter((f) => f.answerId).map((f) => [f.answerId!, f]));
+  const pendingReview = inspection.findings.filter((f) => f.status !== "CLOSED" && f.actionPlans.length === 0);
+  const canReview = inspection.reviewStatus === "PENDING_REVIEW" && managesProcess(user, inspection.processId) && pendingReview.length > 0;
+  const reviewUsers = canReview ? await listUserOptions() : [];
 
   return (
     <>
@@ -128,6 +133,18 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
                   {inspection.inspector.name} · {formatDateTime(inspection.completedAt)} · Próxima inspección del elemento:{" "}
                   {formatDate(inspection.element.nextInspectionAt)}
                 </p>
+                {inspection.reviewStatus && (
+                  <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    <Badge tone={INSPECTION_REVIEW_TONES[inspection.reviewStatus]}>{INSPECTION_REVIEW_LABELS[inspection.reviewStatus]}</Badge>
+                    <span className="text-subtle">
+                      {inspection.reviewStatus === "ARCHIVED" && "Cumple al 100 %: archivada sin acciones pendientes."}
+                      {inspection.reviewStatus === "PENDING_REVIEW" &&
+                        `${pendingReview.length} hallazgo(s) esperando que se asigne el plan de acción.`}
+                      {inspection.reviewStatus === "REVIEWED" &&
+                        `Revisada${inspection.reviewedBy ? ` por ${inspection.reviewedBy.name}` : ""} · ${formatDateTime(inspection.reviewedAt)}`}
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
             {inspection.element.zone && inspection.inspectorId === user.id && (
@@ -141,6 +158,23 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
         <Badge tone={inspection.status === "CANCELLED" ? "neutral" : "info"} className="mb-4">
           {INSPECTION_STATUS_LABELS[inspection.status]} · {inspection.inspector.name} · {formatDateTime(inspection.startedAt)}
         </Badge>
+      )}
+
+      {canReview && (
+        <ReviewPanel
+          inspectionId={inspection.id}
+          findings={pendingReview.map((f) => ({
+            id: f.id,
+            number: f.number,
+            description: f.description,
+            priority: f.priority,
+            requiredAction: f.requiredAction,
+            evidences: f.evidences,
+          }))}
+          users={reviewUsers}
+          defaultResponsibleId={inspection.element.responsibleId}
+          today={todayISO(new Date(), env.APP_TIMEZONE)}
+        />
       )}
 
       <Card className="mb-6">
@@ -198,9 +232,24 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
                 </div>
                 <p className="mt-1 text-sm">{f.description}</p>
                 {f.requiredAction && <p className="text-sm text-muted">Acción: {f.requiredAction}</p>}
-                <p className="text-xs text-subtle">
-                  Responsable: {f.responsible?.name ?? "—"} · Límite: {formatDate(f.dueDate)}
-                </p>
+                {f.actionPlans.length > 0 ? (
+                  <p className="text-xs text-subtle">
+                    {f.actionPlans.map((p, i) => (
+                      <span key={p.id}>
+                        {i > 0 && " · "}
+                        <Link href={`/action-plans/${p.id}`} className="text-primary hover:underline">
+                          Plan {formatNumber(p.number)}
+                        </Link>{" "}
+                        ({p.responsible.name})
+                      </span>
+                    ))}
+                    {" · "}Límite: {formatDate(f.dueDate)}
+                  </p>
+                ) : f.status === "CLOSED" ? (
+                  <p className="text-xs text-subtle">{f.observations ?? "Cerrado"}</p>
+                ) : (
+                  <p className="text-xs font-medium text-warning">Pendiente de revisión: sin plan de acción asignado</p>
+                )}
                 <EvidenceStrip evidences={f.evidences} />
               </li>
             ))}

@@ -2,6 +2,7 @@ import {
   BarChart3,
   Boxes,
   ClipboardCheck,
+  ClipboardList,
   FileText,
   FileUp,
   ListTodo,
@@ -11,6 +12,7 @@ import {
   KeyRound,
   LayoutDashboard,
   ListChecks,
+  Mail,
   Network,
   Users,
   type LucideIcon,
@@ -56,6 +58,12 @@ export const NAVIGATION: NavSection[] = [
         mobile: true,
       },
       {
+        href: "/review",
+        label: "Revisión",
+        icon: ClipboardList,
+        anyOf: ["actions.manage"],
+      },
+      {
         href: "/findings",
         label: "Hallazgos",
         icon: TriangleAlert,
@@ -98,6 +106,7 @@ export const NAVIGATION: NavSection[] = [
       { href: "/admin/roles", label: "Roles y permisos", icon: KeyRound, anyOf: ["roles.manage"] },
       { href: "/admin/processes", label: "Procesos", icon: Network, anyOf: ["processes.manage"] },
       { href: "/admin/sites", label: "Sedes y zonas", icon: Building2, anyOf: ["sites.manage"] },
+      { href: "/admin/emails", label: "Correos", icon: Mail, anyOf: ["settings.manage"] },
     ],
   },
 ];

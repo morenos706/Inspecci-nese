@@ -1,4 +1,5 @@
 import "server-only";
+import { firstFreeCode, recodeElement } from "@/lib/element-code";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/server/db";
@@ -244,7 +245,37 @@ export async function createElement(input: ElementInput, ctx: ServiceContext) {
   });
 }
 
-export async function updateElement(input: ElementInput & { id: string }, ctx: ServiceContext) {
+/**
+ * Si el elemento cambia de sede o zona y el código no se editó a mano, el
+ * código se actualiza (PRO-EXT-023 → COM-EXT-023). El QR sigue siendo válido
+ * (usa un token propio), pero la etiqueta impresa muestra el código viejo.
+ */
+async function recodeOnMove(input: ElementInput & { id: string }, before: { code: string; siteId: string; zoneId: string | null }) {
+  if (input.code !== before.code) return input.code; // lo cambió el usuario: se respeta
+  const siteChanged = input.siteId !== before.siteId;
+  const zoneChanged = (input.zoneId ?? null) !== before.zoneId;
+  if (!siteChanged && !zoneChanged) return input.code;
+  const ids = [before.siteId, input.siteId];
+  const zoneIds = [before.zoneId, input.zoneId].filter((z): z is string => Boolean(z));
+  const [sites, zones] = await Promise.all([
+    db.site.findMany({ where: { id: { in: ids } }, select: { id: true, code: true } }),
+    db.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true, code: true } }),
+  ]);
+  const code = (list: { id: string; code: string }[], id: string | null | undefined) => list.find((x) => x.id === id)?.code ?? null;
+  const proposed = recodeElement(input.code, {
+    fromSite: siteChanged ? code(sites, before.siteId) : null,
+    toSite: siteChanged ? code(sites, input.siteId) : null,
+    fromZone: zoneChanged ? code(zones, before.zoneId) : null,
+    toZone: zoneChanged ? code(zones, input.zoneId) : null,
+  });
+  if (proposed === input.code) return input.code;
+  const taken = new Set(
+    (await db.element.findMany({ where: { code: { startsWith: proposed }, id: { not: input.id } }, select: { code: true } })).map((e) => e.code),
+  );
+  return firstFreeCode(proposed, (c) => taken.has(c)).slice(0, 40);
+}
+
+export async function updateElement(input: ElementInput & { id: string }, ctx: ServiceContext): Promise<{ code: string; recoded: boolean }> {
   const current = await db.element.findFirst({
     where: { id: input.id, deletedAt: null },
     select: {
@@ -285,8 +316,9 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
     before.lastInspectionAt?.getTime() !== lastInspectionAt?.getTime() ||
     (!lastInspectionAt && input.firstInspectionAt !== undefined);
 
+  const newCode = await recodeOnMove(input, before);
   const after = {
-    code: input.code,
+    code: newCode,
     elementTypeId: input.elementTypeId,
     name: input.name,
     description: input.description ?? null,
@@ -311,7 +343,8 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
       : {}),
   };
   const changes = diff(before as Record<string, unknown>, after);
-  if (!changes.changed) return;
+  const recoded = newCode !== input.code;
+  if (!changes.changed) return { code: newCode, recoded };
 
   await db.$transaction(async (tx) => {
     await tx.element.update({ where: { id: input.id }, data: after });
@@ -321,6 +354,7 @@ export async function updateElement(input: ElementInput & { id: string }, ctx: S
       tx,
     );
   });
+  return { code: newCode, recoded };
 }
 
 /** Sugerencia de próximo código por tipo: EXT-001 → EXT-024 (máximo existente + 1). */

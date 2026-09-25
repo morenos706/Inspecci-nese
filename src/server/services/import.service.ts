@@ -28,6 +28,7 @@ import {
   type ImportSection,
   type RowIssue,
 } from "@/server/services/import-sheets";
+import { analyzeUsers, applyUsers, USER_COLUMNS } from "@/server/services/import-users";
 
 export type { ImportSection, RowIssue } from "@/server/services/import-sheets";
 
@@ -87,7 +88,10 @@ async function catalogs() {
  * Procesos, Tipos, Preguntas), Zonas y Elementos, con listas desplegables.
  */
 export async function buildImportTemplate(): Promise<Buffer> {
-  const { sites, processes, types, users } = await catalogs();
+  const [{ sites, processes, types, users }, roles] = await Promise.all([
+    catalogs(),
+    db.role.findMany({ where: { active: true }, select: { name: true }, orderBy: { name: "asc" } }),
+  ]);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Inspecciones de Emergencia";
 
@@ -97,9 +101,11 @@ export async function buildImportTemplate(): Promise<Buffer> {
     "CARGA MASIVA: SEDES, PROCESOS, TIPOS DE EQUIPO, PREGUNTAS, ZONAS E INVENTARIO",
     "",
     "Llena solo las hojas que necesites (las vacías se ignoran). No cambies los encabezados. Las columnas con * son obligatorias.",
-    "Se aplican en este orden: Sedes → Procesos → Tipos → Preguntas → Zonas → Elementos, así un solo archivo puede montar toda la operación.",
+    "Se aplican en este orden: Sedes → Procesos → Usuarios → Tipos → Preguntas → Zonas → Elementos, así un solo archivo puede montar toda la operación.",
     "",
     "SEDES / PROCESOS / TIPOS: si el código ya existe se ACTUALIZA; si no, se CREA.",
+    "USUARIOS: por correo. Si ya existe se actualizan nombre, cargo, roles y procesos; si no, se crea y recibe un correo de bienvenida",
+    "   para definir su contraseña (enlace válido 72 horas). Roles separados por / (ej.: Brigadista / Responsable de acción). Ver hoja «Listas».",
     "TIPOS: Prefijo = inicio sugerido del código de los elementos (EXT → EXT-001). Frecuencia por defecto de inspección (vacía = Mensual).",
     "",
     "PREGUNTAS: el cuestionario de inspección de cada tipo, en orden. Para cada tipo que aparezca en la hoja, el archivo define el cuestionario completo:",
@@ -134,6 +140,14 @@ export async function buildImportTemplate(): Promise<Buffer> {
     codigo: "MANT",
     nombre: "Mantenimiento",
     descripcion: "Fila de ejemplo: bórrala o reemplázala",
+  });
+  addTemplateSheet(wb, "Usuarios", USER_COLUMNS, {
+    nombre: "Carlos Ramírez",
+    correo: "carlos.ramirez@miempresa.com",
+    roles: "Brigadista",
+    procesos: processes[0]?.name ?? "",
+    cargo: "Fila de ejemplo: bórrala o reemplázala",
+    activo: "Sí",
   });
   const typesWs = addTemplateSheet(wb, "Tipos", TYPE_COLUMNS, {
     codigo: "EXT",
@@ -188,6 +202,7 @@ export async function buildImportTemplate(): Promise<Buffer> {
     ["Tipos de respuesta", Object.values(RESPONSE_TYPE_IMPORT_LABELS)],
     ["Sí / No", ["Sí", "No"]],
     ["Prioridades", Object.values(PRIORITY_LABELS)],
+    ["Roles", roles.map((r) => r.name)],
   ];
   listColumns.forEach(([title, values], c) => {
     const col = lists.getColumn(c + 1);
@@ -255,7 +270,7 @@ export interface ImportPreview {
   summary: { create: number; update: number; errors: number; rows: number };
 }
 
-export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
+export async function analyzeImport(buffer: Buffer | ArrayBuffer, currentUserId: string | null = null) {
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(buffer as ArrayBuffer);
@@ -267,9 +282,10 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
 
   const base = await catalogs();
   const catalog = await analyzeCatalog(wb, base);
-  // Sedes, procesos y tipos existentes + los que crea este mismo archivo.
-  const cat = { ...base, ...catalog.catalogs };
-  const catalogRows = Object.values(catalog.sections).reduce((a, rows) => a + rows.length, 0);
+  const userSheet = await analyzeUsers(wb, catalog.catalogs.processes, currentUserId);
+  // Sedes, procesos, tipos y usuarios existentes + los que crea este mismo archivo.
+  const cat = { ...base, ...catalog.catalogs, users: [...base.users, ...userSheet.refs] };
+  const catalogRows = Object.values(catalog.sections).reduce((a, rows) => a + rows.length, 0) + userSheet.issues.length;
   const totalRows = catalogRows + zoneRows.length + elementRows.length;
   if (totalRows === 0) {
     throw new DomainError("El archivo no tiene filas para importar (hojas Sedes, Procesos, Tipos, Preguntas, Zonas o Elementos).");
@@ -425,6 +441,7 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
     [
       { key: "sites", title: "Sedes", rows: catalog.sections.sites },
       { key: "processes", title: "Procesos", rows: catalog.sections.processes },
+      { key: "users", title: "Usuarios", rows: userSheet.issues },
       { key: "types", title: "Tipos", rows: catalog.sections.types },
       { key: "questions", title: "Preguntas", rows: catalog.sections.questions },
       { key: "zones", title: "Zonas", rows: zoneIssues },
@@ -444,6 +461,7 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
   return {
     preview,
     catalogPlans: catalog.plans,
+    userPlans: userSheet.plans,
     zonePlans,
     elementPlans,
     withInspections: new Set(existingElements.filter((e) => e._count.inspections > 0).map((e) => e.id)),
@@ -455,7 +473,7 @@ export async function analyzeImport(buffer: Buffer | ArrayBuffer) {
 // ---------------------------------------------------------------------------
 
 export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceContext) {
-  const { preview, catalogPlans, zonePlans, elementPlans, withInspections } = await analyzeImport(buffer);
+  const { preview, catalogPlans, userPlans, zonePlans, elementPlans, withInspections } = await analyzeImport(buffer, ctx.user.id);
   if (preview.summary.errors > 0) {
     throw new DomainError(`El archivo tiene ${preview.summary.errors} fila(s) con errores. Corrígelas y vuelve a cargarlo.`);
   }
@@ -464,13 +482,16 @@ export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceCont
   };
   need(zonePlans.length > 0 || catalogPlans.sites.length > 0, "sites.manage", "sedes y zonas");
   need(catalogPlans.processes.length > 0, "processes.manage", "procesos");
+  need(userPlans.length > 0, "users.manage", "usuarios");
   need(catalogPlans.types.length > 0 || catalogPlans.questionSets.length > 0, "element_types.manage", "tipos de elemento y preguntas");
 
-  await db.$transaction(
+  const invited = await db.$transaction(
     async (tx) => {
       // 1. Catálogo: sedes, procesos, tipos y preguntas (IDs virtuales → reales)
       const ids = await applyCatalog(tx, catalogPlans);
       const real = (id: string) => ids.get(id) ?? id;
+      // 2. Usuarios (pueden ser responsables de los elementos del mismo archivo)
+      const createdUsers = await applyUsers(tx, userPlans, real, ids);
 
       // 2. Zonas (upsert por sede + código)
       const zoneIds = new Map<string, string>();
@@ -493,7 +514,7 @@ export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceCont
           siteId: real(data.siteId),
           zoneId,
           location: data.location,
-          responsibleId: data.responsibleId,
+          responsibleId: data.responsibleId ? real(data.responsibleId) : null,
           frequency: data.frequency,
           frequencyDays: data.frequencyDays,
           status: data.status,
@@ -544,14 +565,16 @@ export async function applyImport(buffer: Buffer | ArrayBuffer, ctx: ServiceCont
           after: {
             ...preview.summary,
             sections: Object.fromEntries(preview.sections.map((sec) => [sec.key, sec.rows.length])),
+            userEmails: userPlans.map((u) => u.email),
             zoneCodes: zonePlans.map((z) => z.code),
             elementCodes: elementPlans.map((e) => e.data.code),
           },
         },
         tx,
       );
+      return createdUsers;
     },
     { timeout: 120_000, maxWait: 10_000 },
   );
-  return preview.summary;
+  return { summary: preview.summary, invitedUserIds: invited };
 }

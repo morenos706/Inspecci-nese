@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { getReadScope, hasPermission, requirePageUser } from "@/server/auth/current-user";
 import { scheduleSummary } from "@/server/services/elements.service";
-import { myActionPlanSummary } from "@/server/services/action-plans.service";
+import { countPendingReview, myActionPlanSummary } from "@/server/services/action-plans.service";
 import { getFoundationSummary } from "@/server/services/dashboard.service";
 
 export const metadata = { title: "Inicio" };
@@ -17,10 +17,11 @@ export default async function DashboardPage() {
   const isAdmin = hasPermission(user, "users.manage");
   const canSeeElements = getReadScope(user, "elements") !== null;
   const hasPlans = getReadScope(user, "actions") !== null;
-  const [summary, schedule, plans] = await Promise.all([
+  const [summary, schedule, plans, toReview] = await Promise.all([
     isAdmin ? getFoundationSummary() : null,
     canSeeElements ? scheduleSummary(user) : null,
     hasPlans ? myActionPlanSummary(user) : null,
+    countPendingReview(user),
   ]);
   const firstName = user.name.split(" ")[0];
 
@@ -43,6 +44,15 @@ export default async function DashboardPage() {
           Por ejemplo, extintores con la recarga vencida. Requieren atención inmediata.{" "}
           <Link href="/inventory?expiry=EXPIRED" className="font-semibold underline">
             Ver elementos vencidos
+          </Link>
+        </Alert>
+      )}
+
+      {toReview > 0 && (
+        <Alert tone="warning" className="mb-4" title={`${toReview} inspección(es) con hallazgos esperando revisión`}>
+          Asigna el plan de acción y el responsable de cada hallazgo.{" "}
+          <Link href="/review" className="font-semibold underline">
+            Ir a Revisión
           </Link>
         </Alert>
       )}

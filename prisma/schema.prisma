@@ -69,6 +69,15 @@ enum InspectionStatus {
   CANCELLED
 }
 
+// Revisión posterior a la inspección: 100 % conforme → ARCHIVED; con
+// hallazgos → PENDING_REVIEW hasta que el responsable del proceso asigna los
+// planes de acción (o descarta los que no proceden) → REVIEWED.
+enum InspectionReview {
+  PENDING_REVIEW
+  REVIEWED
+  ARCHIVED
+}
+
 enum InspectionResult {
   COMPLIANT
   NON_COMPLIANT
@@ -146,6 +155,7 @@ model User {
 
   responsibleElements   Element[]      @relation("ElementResponsible")
   inspections           Inspection[]   @relation("InspectionInspector")
+  inspectionsReviewed   Inspection[]   @relation("InspectionReviewer")
   findingsResponsible   Finding[]      @relation("FindingResponsible")
   findingsCreated       Finding[]      @relation("FindingCreatedBy")
   findingsVerified      Finding[]      @relation("FindingVerifiedBy")
@@ -492,12 +502,16 @@ model Inspection {
   nonCompliantCount  Int       @default(0)
   compliancePct      Decimal?  @db.Decimal(5, 2)
   notes       String?
+  reviewStatus InspectionReview?
+  reviewedAt   DateTime?
+  reviewedById String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
   element   Element            @relation(fields: [elementId], references: [id], onDelete: Restrict)
   template  InspectionTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
   inspector User               @relation("InspectionInspector", fields: [inspectorId], references: [id], onDelete: Restrict)
+  reviewedBy User?             @relation("InspectionReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
   process   Process            @relation(fields: [processId], references: [id], onDelete: Restrict)
   site      Site               @relation(fields: [siteId], references: [id], onDelete: Restrict)
 
@@ -510,6 +524,7 @@ model Inspection {
   @@index([processId, completedAt])
   @@index([siteId, completedAt])
   @@index([status, completedAt])
+  @@index([reviewStatus, completedAt])
   @@map("inspections")
 }
 

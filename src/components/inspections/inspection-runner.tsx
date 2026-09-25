@@ -47,7 +47,6 @@ export function InspectionRunner({
   inspection,
   questions,
   answers,
-  users,
   today,
 }: {
   inspection: {
@@ -66,7 +65,6 @@ export function InspectionRunner({
   };
   questions: RunnerQuestion[];
   answers: Record<string, RunnerAnswer>;
-  users: { id: string; name: string; jobTitle: string | null }[];
   today: string;
 }) {
   const [local, setLocal] = useState<Record<string, LocalAnswer>>(() =>
@@ -277,9 +275,6 @@ export function InspectionRunner({
                     answerId={(a?.answerId ?? server?.id)!}
                     questionText={q.text}
                     defaultPriority={q.defaultPriority}
-                    defaultResponsibleId={inspection.element.responsibleId}
-                    users={users}
-                    today={today}
                     finding={finding}
                   />
                 </div>
@@ -350,8 +345,8 @@ export function InspectionRunner({
                   <p>Se calculará el resultado y se programará la próxima inspección del elemento.</p>
                 )}
                 {nonCompliantWithoutFinding.length > 0 && (
-                  <Alert tone="warning" title="Respuestas que no cumplen sin hallazgo">
-                    {nonCompliantWithoutFinding.map((q) => q.text).join(" · ")}
+                  <Alert tone="warning" title="Respuestas que no cumplen sin hallazgo descrito">
+                    Se registrarán automáticamente como hallazgo para la revisión: {nonCompliantWithoutFinding.map((q) => q.text).join(" · ")}
                   </Alert>
                 )}
                 {unsaved && <Alert tone="warning">Hay respuestas sin guardar.</Alert>}

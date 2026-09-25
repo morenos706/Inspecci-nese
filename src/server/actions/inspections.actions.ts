@@ -68,7 +68,9 @@ export async function finalizeInspectionAction(inspectionId: string, notes: stri
     const pct = summary.compliancePct === null ? "" : ` · ${summary.compliancePct.toFixed(0)}% de cumplimiento`;
     return {
       ok: true,
-      message: `Inspección finalizada: ${summary.result === "COMPLIANT" ? "CUMPLE" : "NO CUMPLE"}${pct}.`,
+      message: `Inspección finalizada: ${summary.result === "COMPLIANT" ? "CUMPLE" : "NO CUMPLE"}${pct}. ${
+        summary.reviewStatus === "PENDING_REVIEW" ? `${summary.findings} hallazgo(s) enviados a revisión.` : "Archivada."
+      }`,
       redirectTo: `/inspections/${id}`,
     };
   });

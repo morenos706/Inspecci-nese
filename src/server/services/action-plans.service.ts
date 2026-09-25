@@ -402,7 +402,10 @@ export async function updateActionPlan(planId: string, input: z.infer<typeof pla
 }
 
 export async function createActionPlan(findingId: string, input: z.infer<typeof planEditSchema>, ctx: ServiceContext) {
-  const finding = await db.finding.findFirst({ where: { id: findingId }, select: { id: true, processId: true, status: true } });
+  const finding = await db.finding.findFirst({
+    where: { id: findingId },
+    select: { id: true, processId: true, status: true, inspectionId: true },
+  });
   if (!finding) throw new NotFoundError("El hallazgo no existe.");
   if (!managesProcess(ctx.user, finding.processId)) throw new AuthorizationError();
   if (finding.status === "CLOSED") throw new DomainError("El hallazgo está cerrado.");
@@ -420,6 +423,7 @@ export async function createActionPlan(findingId: string, input: z.infer<typeof 
     });
     await tx.actionPlanEvent.create({ data: { actionPlanId: plan.id, userId: ctx.user.id, toStatus: "PENDING", comment: "Plan creado" } });
     await syncFindingStatus(findingId, ctx.user.id, tx);
+    if (finding.inspectionId) await completeReviewIfDone(finding.inspectionId, ctx.user.id, tx);
     await audit(auditCtx(ctx), { action: "action_plan.create", entityType: "ActionPlan", entityId: plan.id, after: { findingId, ...input } }, tx);
     await notify(
       {
@@ -432,5 +436,151 @@ export async function createActionPlan(findingId: string, input: z.infer<typeof 
       tx,
     );
     return plan;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Revisión de inspecciones con hallazgos
+// ---------------------------------------------------------------------------
+
+/**
+ * Si todos los hallazgos de la inspección ya tienen plan de acción (o se
+ * descartaron por no proceder), la inspección queda REVISADA y se avisa a
+ * quien la realizó.
+ */
+export async function completeReviewIfDone(inspectionId: string, actorId: string, tx: Tx) {
+  const inspection = await tx.inspection.findUnique({
+    where: { id: inspectionId },
+    select: { id: true, number: true, reviewStatus: true, inspectorId: true, element: { select: { code: true } } },
+  });
+  if (!inspection || inspection.reviewStatus !== "PENDING_REVIEW") return false;
+  const pending = await tx.finding.count({ where: { inspectionId, status: { not: "CLOSED" }, actionPlans: { none: {} } } });
+  if (pending > 0) return false;
+  await tx.inspection.update({ where: { id: inspectionId }, data: { reviewStatus: "REVIEWED", reviewedAt: new Date(), reviewedById: actorId } });
+  await audit({ userId: actorId }, { action: "inspection.reviewed", entityType: "Inspection", entityId: inspectionId }, tx);
+  await notify(
+    {
+      userIds: [inspection.inspectorId],
+      excludeUserId: actorId,
+      type: "inspection.reviewed",
+      title: `Inspección ${formatNumber(inspection.number)} revisada`,
+      body: `Los hallazgos de ${inspection.element.code} ya tienen plan de acción asignado.`,
+      link: `/inspections/${inspectionId}`,
+    },
+    tx,
+  );
+  return true;
+}
+
+async function loadFindingForReview(findingId: string, user: CurrentUser) {
+  const finding = await db.finding.findFirst({
+    where: { id: findingId },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      processId: true,
+      inspectionId: true,
+      description: true,
+      priority: true,
+      inspection: { select: { reviewStatus: true } },
+      _count: { select: { actionPlans: true } },
+    },
+  });
+  if (!finding) throw new NotFoundError("El hallazgo no existe.");
+  if (!managesProcess(user, finding.processId)) throw new AuthorizationError("Solo quien gestiona los planes del proceso puede revisar este hallazgo.");
+  if (finding.status === "CLOSED") throw new DomainError("El hallazgo ya está cerrado.");
+  return finding;
+}
+
+/** Revisión: asigna el plan de acción (acción, responsable, fecha) y ajusta la prioridad del hallazgo. */
+export async function assignFindingPlan(
+  input: { findingId: string; action: string; responsibleId: string; dueDate: string; priority: Prisma.FindingUpdateInput["priority"] & string },
+  ctx: ServiceContext,
+) {
+  const finding = await loadFindingForReview(input.findingId, ctx.user);
+  if (input.dueDate < todayISO(new Date(), env.APP_TIMEZONE)) {
+    throw new ValidationError({ dueDate: ["La fecha límite no puede ser anterior a hoy"] });
+  }
+  await assertResponsible(input.responsibleId);
+  // Datos del hallazgo (reportes y listados muestran la acción y el responsable principal).
+  await db.finding.update({
+    where: { id: finding.id },
+    data: {
+      priority: input.priority,
+      requiredAction: input.action,
+      responsibleId: input.responsibleId,
+      dueDate: dueDateFromISO(input.dueDate),
+    },
+  });
+  return createActionPlan(finding.id, { action: input.action, responsibleId: input.responsibleId, dueDate: input.dueDate }, ctx);
+}
+
+/** Revisión: el hallazgo no procede → se cierra con el motivo (sin plan de acción). */
+export async function dismissFinding(input: { findingId: string; reason: string }, ctx: ServiceContext) {
+  const finding = await loadFindingForReview(input.findingId, ctx.user);
+  if (finding._count.actionPlans > 0) throw new DomainError("El hallazgo ya tiene planes de acción; gestiónalo desde sus planes.");
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.finding.update({
+      where: { id: finding.id },
+      data: {
+        status: "CLOSED",
+        closedAt: now,
+        closedById: ctx.user.id,
+        observations: `No procede: ${input.reason}`,
+      },
+    });
+    await audit(
+      auditCtx(ctx),
+      { action: "finding.dismiss", entityType: "Finding", entityId: finding.id, before: { status: finding.status }, after: { reason: input.reason } },
+      tx,
+    );
+    if (finding.inspectionId) await completeReviewIfDone(finding.inspectionId, ctx.user.id, tx);
+  });
+}
+
+export const reviewQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10_000).catch(1).default(1),
+});
+
+/** Bandeja de revisión: inspecciones con hallazgos pendientes de asignar, del alcance del usuario. */
+export async function listPendingReview(query: z.infer<typeof reviewQuerySchema>, user: CurrentUser) {
+  if (!user.permissions.has("actions.manage")) throw new AuthorizationError();
+  const scope = getReadScope(user, "actions");
+  const where: Prisma.InspectionWhereInput = {
+    reviewStatus: "PENDING_REVIEW",
+    ...(scope === "all" ? {} : { processId: { in: user.processIds } }),
+  };
+  const [items, total] = await db.$transaction([
+    db.inspection.findMany({
+      where,
+      orderBy: { completedAt: "asc" },
+      select: {
+        id: true,
+        number: true,
+        completedAt: true,
+        compliancePct: true,
+        inspector: { select: { name: true } },
+        site: { select: { name: true } },
+        process: { select: { name: true } },
+        element: { select: { code: true, name: true, elementType: { select: { name: true } }, zone: { select: { name: true } } } },
+        findings: {
+          where: { status: { not: "CLOSED" }, actionPlans: { none: {} } },
+          select: { priority: true },
+        },
+      },
+      ...paginationArgs(query.page),
+    }),
+    db.inspection.count({ where }),
+  ]);
+  return paginated(items, total, query.page);
+}
+
+export async function countPendingReview(user: CurrentUser) {
+  if (!user.permissions.has("actions.manage")) return 0;
+  const scope = getReadScope(user, "actions");
+  return db.inspection.count({
+    where: { reviewStatus: "PENDING_REVIEW", ...(scope === "all" ? {} : { processId: { in: user.processIds } }) },
   });
 }

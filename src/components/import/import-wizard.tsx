@@ -93,6 +93,7 @@ export function ImportWizard() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [done, setDone] = useState<Section[] | null>(null);
+  const [invited, setInvited] = useState(0);
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
 
   async function send(mode: "preview" | "apply", f: File) {
@@ -107,6 +108,7 @@ export function ImportWizard() {
       if (mode === "preview") setPreview(data.preview);
       else {
         setDone(preview?.sections ?? []);
+        setInvited(Number(data.invited ?? 0));
         toast.success("Carga masiva completada");
       }
     } catch (error) {
@@ -129,6 +131,9 @@ export function ImportWizard() {
               </li>
             ))}
           </ul>
+          {invited > 0 && (
+            <p className="text-sm text-muted">Se están enviando {invited} correo(s) de bienvenida para que cada usuario defina su contraseña.</p>
+          )}
           <div className="flex gap-2">
             <Link href="/inventory" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">
               Ver inventario

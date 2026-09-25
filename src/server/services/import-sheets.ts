@@ -18,7 +18,7 @@ export interface RowIssue {
 }
 
 export interface ImportSection {
-  key: "sites" | "processes" | "types" | "questions" | "zones" | "elements";
+  key: "sites" | "processes" | "users" | "types" | "questions" | "zones" | "elements";
   title: string;
   rows: RowIssue[];
 }

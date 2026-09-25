@@ -15,9 +15,15 @@ export async function saveElementAction(_prev: ActionState, formData: FormData):
     const ctx = await serviceContext(await requirePermission("elements.manage"));
     const input = parseForm(elementSchema, formData);
     if (input.id) {
-      await elementsService.updateElement({ ...input, id: input.id }, ctx);
+      const { code, recoded } = await elementsService.updateElement({ ...input, id: input.id }, ctx);
       revalidatePath("/inventory");
-      return { ok: true, message: "Elemento actualizado.", redirectTo: `/inventory/${input.id}` };
+      return {
+        ok: true,
+        message: recoded
+          ? `Elemento actualizado. Por el cambio de sede/zona su código ahora es ${code}: reimprime la etiqueta QR.`
+          : "Elemento actualizado.",
+        redirectTo: `/inventory/${input.id}`,
+      };
     }
     const element = await elementsService.createElement(input, ctx);
     revalidatePath("/inventory");

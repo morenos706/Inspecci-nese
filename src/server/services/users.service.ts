@@ -125,7 +125,7 @@ export async function createUser(input: UserCreateInput, ctx: ServiceContext) {
 
   if (!input.password) {
     const resetUrl = await createPasswordResetLink(user.id, INVITE_TOKEN_MINUTES);
-    await sendMail(welcomeEmail({ to: user.email, name: user.name, resetUrl, loginUrl: `${env.APP_URL}/login` }));
+    await sendMail(await welcomeEmail({ to: user.email, name: user.name, resetUrl, loginUrl: `${env.APP_URL}/login` }));
   }
   return user;
 }
@@ -219,11 +219,98 @@ export async function sendPasswordResetByAdmin(userId: string, ctx: ServiceConte
   if (!user) throw new NotFoundError("El usuario no existe o está inactivo.");
   await db.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } });
   const url = await createPasswordResetLink(user.id, RESET_TOKEN_MINUTES);
-  await sendMail(passwordResetEmail({ to: user.email, name: user.name, url, expiresInMinutes: RESET_TOKEN_MINUTES }));
+  await sendMail(await passwordResetEmail({ to: user.email, name: user.name, url, expiresInMinutes: RESET_TOKEN_MINUTES }));
   await audit(auditCtx(ctx), { action: "user.password_reset_sent", entityType: "User", entityId: userId });
 }
 
 export async function unlockUser(userId: string, ctx: ServiceContext) {
   await db.user.update({ where: { id: userId }, data: { lockedUntil: null, failedLoginCount: 0 } });
   await audit(auditCtx(ctx), { action: "user.unlock", entityType: "User", entityId: userId });
+}
+
+/**
+ * Elimina un usuario.
+ *  - Sin historial (nunca inspeccionó, registró ni gestionó nada) → se borra.
+ *  - Con historial → baja lógica: se desactiva, pierde roles, procesos y
+ *    sesiones, y su correo queda libre para crear otro usuario. Su nombre se
+ *    conserva en inspecciones, hallazgos y auditoría (trazabilidad).
+ * Bloquea si es uno mismo, el último administrador, o si tiene planes de
+ * acción abiertos (primero se reasignan).
+ */
+export async function deleteUser(userId: string, ctx: ServiceContext): Promise<"deleted" | "archived"> {
+  if (userId === ctx.user.id) throw new DomainError("No puedes eliminar tu propio usuario.");
+  const user = await db.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { id: true, name: true, email: true, active: true },
+  });
+  if (!user) throw new NotFoundError("El usuario no existe.");
+  await assertAdminRemains(userId, false, []);
+
+  const openPlans = await db.actionPlan.count({ where: { responsibleId: userId, status: { in: ["PENDING", "IN_PROGRESS"] } } });
+  if (openPlans > 0) {
+    throw new DomainError(
+      `Tiene ${openPlans} plan(es) de acción abiertos. Reasígnalos a otra persona (Planes → Reasignar o editar) y vuelve a intentarlo.`,
+    );
+  }
+  const draftsWithFindings = await db.inspection.count({
+    where: { inspectorId: userId, status: "IN_PROGRESS", findings: { some: {} } },
+  });
+  if (draftsWithFindings > 0) {
+    throw new DomainError(`Tiene ${draftsWithFindings} inspección(es) en curso con hallazgos registrados: deben finalizarse antes.`);
+  }
+
+  const history = await db.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: {
+      _count: {
+        select: {
+          inspections: true,
+          findingsCreated: true,
+          findingsVerified: true,
+          findingsClosed: true,
+          actionPlansResponsible: true,
+          actionPlansCreated: true,
+          actionPlansSolved: true,
+          actionPlansVerified: true,
+          actionPlansClosed: true,
+          actionPlanEvents: true,
+          evidences: true,
+          settingsUpdated: true,
+        },
+      },
+    },
+  });
+  const hasHistory = Object.values(history._count).some((n) => n > 0);
+
+  const mode = await db.$transaction(async (tx) => {
+    // Inspecciones en curso sin hallazgos: se anulan (nadie más puede continuarlas).
+    await tx.inspection.updateMany({ where: { inspectorId: userId, status: "IN_PROGRESS" }, data: { status: "CANCELLED" } });
+    await tx.element.updateMany({ where: { responsibleId: userId }, data: { responsibleId: null } });
+    await audit(
+      auditCtx(ctx),
+      { action: "user.delete", entityType: "User", entityId: userId, before: { name: user.name, email: user.email }, after: { hasHistory } },
+      tx,
+    );
+    if (!hasHistory) {
+      await tx.user.delete({ where: { id: userId } });
+      return "deleted" as const;
+    }
+    await tx.session.deleteMany({ where: { userId } });
+    await tx.passwordResetToken.deleteMany({ where: { userId } });
+    await tx.notification.deleteMany({ where: { userId } });
+    await tx.userRole.deleteMany({ where: { userId } });
+    await tx.userProcess.deleteMany({ where: { userId } });
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        active: false,
+        deletedAt: new Date(),
+        emailNotifications: false,
+        // Libera el correo para poder crear de nuevo a la persona si regresa.
+        email: `eliminado-${Date.now()}-${user.email}`.slice(0, 250),
+      },
+    });
+    return "archived" as const;
+  });
+  return mode;
 }

@@ -91,7 +91,7 @@ export async function requestPasswordReset(email: string, meta: RequestMeta) {
     data: { usedAt: new Date() },
   });
   const url = await createPasswordResetLink(user.id, RESET_TOKEN_MINUTES);
-  await sendMail(passwordResetEmail({ to: user.email, name: user.name, url, expiresInMinutes: RESET_TOKEN_MINUTES }));
+  await sendMail(await passwordResetEmail({ to: user.email, name: user.name, url, expiresInMinutes: RESET_TOKEN_MINUTES }));
   await audit({ userId: user.id, meta }, { action: "auth.password_reset_requested", entityType: "User", entityId: user.id });
 }
 
